@@ -6,7 +6,7 @@
 from enum import Enum
 from itertools import product
 
-from .key import ECPubKey
+from .key import MiniscriptKey
 from .script import (
     CScript,
     OP_ADD,
@@ -183,9 +183,7 @@ class Node:
             return Node().construct_just_1()
 
         if tag == "pk":
-            key_b = bytes.fromhex(child_exprs[0])
-            key_obj = ECPubKey()
-            key_obj.set(key_b)
+            key_obj = MiniscriptKey(child_exprs[0])
             return Node().construct_pk(key_obj)
 
         if tag == "pk_h":
@@ -208,8 +206,7 @@ class Node:
             k = int(child_exprs.pop(0))
             key_n = []
             for child_expr in child_exprs:
-                key_obj = ECPubKey()
-                key_obj.set(bytes.fromhex(child_expr))
+                key_obj = MiniscriptKey(child_expr)
                 key_n.append(key_obj)
             return Node().construct_thresh_m(k, key_n)
 
@@ -257,8 +254,7 @@ class Node:
                 and len(expr_list[idx]) == 33
                 and expr_list[idx][0] in [2, 3]
             ):
-                key = ECPubKey()
-                key.set(expr_list[idx])
+                key = MiniscriptKey(expr_list[idx])
                 expr_list[idx] = Node().construct_pk(key)
 
             # Match against just1.
@@ -677,8 +673,7 @@ class Node:
                             match = False
                             break
                         else:
-                            key = ECPubKey()
-                            key.set(expr_list[idx + 1 + i]._pk[0])
+                            key = MiniscriptKey(expr_list[idx + 1 + i]._pk[0])
                             pk_m.append(key)
                     # Match ... <m> <OP_CHECKMULTISIG>
                     if match is True:
@@ -927,15 +922,14 @@ class Node:
         return self
 
     def construct_pk(self, pubkey):
-        assert isinstance(pubkey, ECPubKey) and pubkey.is_valid
-        self._pk = [pubkey.get_bytes()]
+        self._pk = [pubkey.bytes()]
         self._construct(
             NodeType.PK,
             Property().from_string("Konudems"),
             [],
             self._pk_sat,
             self._pk_dsat,
-            [pubkey.get_bytes()],
+            [pubkey.bytes()],
             "pk(" + self._pk[0].hex() + ")",
         )
         return self
@@ -1043,7 +1037,7 @@ class Node:
         n = len(keys_n)
         assert n >= k >= 1
         prop_str = "Bnudems"
-        self._pk_n = [key.get_bytes() for key in keys_n]
+        self._pk_n = [key.bytes() for key in keys_n]
         desc = "thresh_m(" + str(k) + ","
         for idx, key_b in enumerate(self._pk_n):
             desc += key_b.hex()
