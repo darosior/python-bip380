@@ -836,7 +836,7 @@ class Node:
     def construct_just_1(self):
         self._construct(
             NodeType.JUST_1,
-            Property().from_string("Bzufm"),
+            Property("Bzufm"),
             [],
             self._just_1_sat,
             self._just_1_dsat,
@@ -848,7 +848,7 @@ class Node:
     def construct_just_0(self):
         self._construct(
             NodeType.JUST_0,
-            Property().from_string("Bzudems"),
+            Property("Bzudems"),
             [],
             self._just_0_sat,
             self._just_0_dsat,
@@ -861,7 +861,7 @@ class Node:
         self._pk = [pubkey.bytes()]
         self._construct(
             NodeType.PK,
-            Property().from_string("Konudems"),
+            Property("Konudems"),
             [],
             self._pk_sat,
             self._pk_dsat,
@@ -875,7 +875,7 @@ class Node:
         self._pk_h = pk_hash_digest
         self._construct(
             NodeType.PK_H,
-            Property().from_string("Knudems"),
+            Property("Knudems"),
             [],
             self._pk_h_sat,
             self._pk_h_dsat,
@@ -889,7 +889,7 @@ class Node:
         self._delay = delay
         self._construct(
             NodeType.OLDER,
-            Property().from_string("Bzfm"),
+            Property("Bzfm"),
             [],
             self._older_sat,
             self._older_dsat,
@@ -903,7 +903,7 @@ class Node:
         self._time = time
         self._construct(
             NodeType.AFTER,
-            Property().from_string("Bzfm"),
+            Property("Bzfm"),
             [],
             self._after_sat,
             self._after_dsat,
@@ -917,7 +917,7 @@ class Node:
         self._sha256 = hash_digest
         self._construct(
             NodeType.SHA256,
-            Property().from_string("Bonudm"),
+            Property("Bonudm"),
             [],
             self._sha256_sat,
             self._sha256_dsat,
@@ -931,7 +931,7 @@ class Node:
         self._hash256 = hash_digest
         self._construct(
             NodeType.HASH256,
-            Property().from_string("Bonudm"),
+            Property("Bonudm"),
             [],
             self._hash256_sat,
             self._hash256_dsat,
@@ -945,7 +945,7 @@ class Node:
         self._ripemd160 = hash_digest
         self._construct(
             NodeType.RIPEMD160,
-            Property().from_string("Bonudm"),
+            Property("Bonudm"),
             [],
             self._ripemd160_sat,
             self._ripemd160_dsat,
@@ -959,7 +959,7 @@ class Node:
         self._hash160 = hash_digest
         self._construct(
             NodeType.HASH160,
-            Property().from_string("Bonudm"),
+            Property("Bonudm"),
             [],
             self._hash160_sat,
             self._hash160_dsat,
@@ -980,7 +980,7 @@ class Node:
             desc += "," if idx != (n - 1) else ")"
         self._construct(
             NodeType.THRESH_M,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [],
             self._thresh_m_sat,
             self._thresh_m_dsat,
@@ -1007,7 +1007,7 @@ class Node:
         prop_str += "s" if child_x.p.s or child_y.p.s else ""
         self._construct(
             NodeType.AND_V,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x, child_y],
             self._and_v_sat,
             self._and_v_dsat,
@@ -1041,7 +1041,7 @@ class Node:
         prop_str += "s" if child_x.p.s or child_y.p.s else ""
         self._construct(
             NodeType.AND_B,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x, child_y],
             self._and_b_sat,
             self._and_b_dsat,
@@ -1063,7 +1063,7 @@ class Node:
         prop_str += "s" if child_x.p.s or child_y.p.s else ""
         self._construct(
             NodeType.AND_N,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x, child_y],
             self._and_n_sat,
             self._and_n_dsat,
@@ -1096,7 +1096,7 @@ class Node:
         prop_str += "s" if child_x.p.s and child_z.p.s else ""
         self._construct(
             NodeType.OR_B,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x, child_z],
             self._or_b_sat,
             self._or_b_dsat,
@@ -1126,7 +1126,7 @@ class Node:
         prop_str += "s" if child_x.p.s and child_z.p.s else ""
         self._construct(
             NodeType.OR_D,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x, child_z],
             self._or_d_sat,
             self._or_d_dsat,
@@ -1153,7 +1153,7 @@ class Node:
         prop_str += "s" if child_x.p.s and child_z.p.s else ""
         self._construct(
             NodeType.OR_C,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x, child_z],
             self._or_c_sat,
             self._or_c_dsat,
@@ -1182,7 +1182,7 @@ class Node:
         prop_str += "s" if child_x.p.s and child_z.p.s else ""
         self._construct(
             NodeType.OR_I,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x, child_z],
             self._or_i_sat,
             self._or_i_dsat,
@@ -1222,7 +1222,7 @@ class Node:
         prop_str += "s" if child_z.p.s and (child_x.p.s or child_y.p.s) else ""
         self._construct(
             NodeType.ANDOR,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x, child_y, child_z],
             self._andor_sat,
             self._andor_dsat,
@@ -1248,7 +1248,7 @@ class Node:
         tag = "a" if child_x.t.name.startswith("WRAP_") else "a:"
         self._construct(
             NodeType.WRAP_A,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x],
             self._a_sat,
             self._a_dsat,
@@ -1269,7 +1269,7 @@ class Node:
         tag = "s" if child_x.t.name.startswith("WRAP_") else "s:"
         self._construct(
             NodeType.WRAP_S,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x],
             self._s_sat,
             self._s_dsat,
@@ -1290,7 +1290,7 @@ class Node:
         tag = "c" if child_x.t.name.startswith("WRAP_") else "c:"
         self._construct(
             NodeType.WRAP_C,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x],
             self._c_sat,
             self._c_dsat,
@@ -1310,7 +1310,7 @@ class Node:
         tag = "t" if child_x.t.name.startswith("WRAP_") else "t:"
         self._construct(
             NodeType.WRAP_T,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x],
             self._t_sat,
             self._t_dsat,
@@ -1330,7 +1330,7 @@ class Node:
         tag = "d" if child_x.t.name.startswith("WRAP_") else "d:"
         self._construct(
             NodeType.WRAP_D,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x],
             self._d_sat,
             self._d_dsat,
@@ -1360,7 +1360,7 @@ class Node:
             script = child_x._script + [OP_VERIFY]
         self._construct(
             NodeType.WRAP_V,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x],
             self._v_sat,
             self._v_dsat,
@@ -1382,7 +1382,7 @@ class Node:
         script = [OP_SIZE, OP_0NOTEQUAL, OP_IF] + child_x._script + [OP_ENDIF]
         self._construct(
             NodeType.WRAP_J,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x],
             self._j_sat,
             self._j_dsat,
@@ -1405,7 +1405,7 @@ class Node:
         tag = "n" if child_x.t.name.startswith("WRAP_") else "n:"
         self._construct(
             NodeType.WRAP_N,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x],
             self._n_sat,
             self._n_dsat,
@@ -1426,7 +1426,7 @@ class Node:
         script = [OP_IF, 0, OP_ELSE] + child_x._script + [OP_ENDIF]
         self._construct(
             NodeType.WRAP_L,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x],
             self._l_sat,
             self._l_dsat,
@@ -1447,7 +1447,7 @@ class Node:
         script = [OP_IF] + child_x._script + [OP_ELSE, 0, OP_ENDIF]
         self._construct(
             NodeType.WRAP_U,
-            Property().from_string(prop_str),
+            Property(prop_str),
             [child_x],
             self._u_sat,
             self._u_dsat,
@@ -1500,7 +1500,7 @@ class Node:
 
         self._construct(
             NodeType.THRESH,
-            Property().from_string(prop_str),
+            Property(prop_str),
             children_n,
             self._thresh_sat,
             self._thresh_dsat,

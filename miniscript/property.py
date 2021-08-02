@@ -1,3 +1,8 @@
+class MiniscriptPropertyError(ValueError):
+    def __init__(self, message):
+        self.message = message
+
+
 class Property:
     """Miniscript expression property"""
 
@@ -18,36 +23,33 @@ class Property:
     types = "BVKW"
     props = "zonduefsmx"
 
-    def __init__(self):
+    def __init__(self, property_str=""):
+        """Create a property, optionally from a str of property and types"""
+        for c in property_str:
+            if c not in self.types + self.props:
+                raise MiniscriptPropertyError(f"Invalid property/type character '{c}'")
+
         for literal in self.types + self.props:
-            setattr(self, literal, False)
+            setattr(self, literal, literal in property_str)
 
-    def from_string(self, property_str):
-        """Construct property from string of valid property and types"""
-        for char in property_str:
-            assert hasattr(self, char)
-            setattr(self, char, True)
-        assert self.is_valid()
-        return self
-
-    def to_string(self):
+    def __repr__(self):
         """Generate string representation of property"""
-        property_str = ""
-        for char in self.types + self.props:
-            if getattr(self, char):
-                property_str += char
-        return property_str
+        return "".join([c for c in self.types + self.props if getattr(self, c)])
 
-    def is_valid(self):
+    def check_valid(self):
+        """Raises a MiniscriptPropertyError if the types/properties conflict"""
         # Can only be of a single type.
         num_types = 0
         for typ in self.types:
             if getattr(self, typ):
+                if num_types == 1:
+                    raise MiniscriptPropertyError(
+                        "A Miniscript fragment can only be of a single type"
+                    )
                 num_types += 1
-        assert num_types == 1
 
         # Check for conflicts in type & properties.
-        return (
+        if not (
             (not self.z or not self.o)
             and (not self.n or not self.z)
             and (not self.V or not self.d)
@@ -60,4 +62,5 @@ class Property:
             and (not self.V or self.f)
             and (not self.K or self.s)
             and (not self.z or self.m)
-        )
+        ):
+            raise MiniscriptPropertyError("Conflicting types and properties")
