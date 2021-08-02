@@ -43,7 +43,7 @@ from .script import (
 class NodeType(Enum):
     JUST_0 = 0
     JUST_1 = 1
-    PK = 2
+    PK_K = 2
     PK_H = 3
     OLDER = 4
     AFTER = 5
@@ -70,7 +70,7 @@ class NodeType(Enum):
     OR_I = 26
     ANDOR = 27
     THRESH = 28
-    THRESH_M = 29
+    MULTI = 29
 
 
 class SatType(Enum):
@@ -103,7 +103,7 @@ class Node:
         self.t = None
         self._sat = None
         self._k = None
-        self._pk = []
+        self._pk_k = []
         self._pk_h = None
 
     @staticmethod
@@ -118,9 +118,9 @@ class Node:
         if tag == "1":
             return Node().construct_just_1()
 
-        if tag == "pk":
+        if tag == "pk_k":
             key_obj = MiniscriptKey(child_exprs[0])
-            return Node().construct_pk(key_obj)
+            return Node().construct_pk_k(key_obj)
 
         if tag == "pk_h":
             keyhash_b = bytes.fromhex(child_exprs[0])
@@ -138,13 +138,13 @@ class Node:
             hash_b = bytes.fromhex(child_exprs[0])
             return getattr(Node(), "construct_" + tag)(hash_b)
 
-        if tag == "thresh_m":
+        if tag == "multi":
             k = int(child_exprs.pop(0))
             key_n = []
             for child_expr in child_exprs:
                 key_obj = MiniscriptKey(child_expr)
                 key_n.append(key_obj)
-            return Node().construct_thresh_m(k, key_n)
+            return Node().construct_multi(k, key_n)
 
         if tag == "thresh":
             k = int(child_exprs.pop(0))
@@ -184,14 +184,14 @@ class Node:
         idx = 0
         while idx < expr_list_len:
 
-            # Match against pk(key).
+            # Match against pk_k(key).
             if (
                 isinstance(expr_list[idx], bytes)
                 and len(expr_list[idx]) == 33
                 and expr_list[idx][0] in [2, 3]
             ):
                 key = MiniscriptKey(expr_list[idx])
-                expr_list[idx] = Node().construct_pk(key)
+                expr_list[idx] = Node().construct_pk_k(key)
 
             # Match against just1.
             if expr_list[idx] == 1:
@@ -583,7 +583,7 @@ class Node:
                     except Exception:
                         pass
 
-            # Match against thresh_m.
+            # Match against multi.
             # Termainal expression, but k and n values can be Nodes (JUST_0/1)
             if expr_list_len - idx >= 5 and (
                 (
@@ -599,17 +599,17 @@ class Node:
                 # Permissible values for n:
                 # len(expr)-3 >= n >= 1
                 for n in range(k, expr_list_len - 2):
-                    # Match ... <PK>*n ...
+                    # Match ... <PK_K>*n ...
                     match, pk_m = True, []
                     for i in range(n):
                         if not (
                             isinstance(expr_list[idx + 1 + i], Node)
-                            and expr_list[idx + 1 + i].t == NodeType.PK
+                            and expr_list[idx + 1 + i].t == NodeType.PK_K
                         ):
                             match = False
                             break
                         else:
-                            key = MiniscriptKey(expr_list[idx + 1 + i]._pk[0])
+                            key = MiniscriptKey(expr_list[idx + 1 + i]._pk_k[0])
                             pk_m.append(key)
                     # Match ... <m> <OP_CHECKMULTISIG>
                     if match is True:
@@ -620,7 +620,7 @@ class Node:
                             and expr_list[idx + n + 2] == OP_CHECKMULTISIG
                         ):
                             try:
-                                node = Node().construct_thresh_m(k, pk_m)
+                                node = Node().construct_multi(k, pk_m)
                                 expr_list = (
                                     expr_list[:idx] + [node] + expr_list[idx + n + 3 :]
                                 )
@@ -857,16 +857,16 @@ class Node:
         )
         return self
 
-    def construct_pk(self, pubkey):
-        self._pk = [pubkey.bytes()]
+    def construct_pk_k(self, pubkey):
+        self._pk_k = [pubkey.bytes()]
         self._construct(
-            NodeType.PK,
+            NodeType.PK_K,
             Property("Konudems"),
             [],
-            self._pk_sat,
-            self._pk_dsat,
+            self._pk_k_sat,
+            self._pk_k_dsat,
             [pubkey.bytes()],
-            "pk(" + self._pk[0].hex() + ")",
+            "pk_k(" + self._pk_k[0].hex() + ")",
         )
         return self
 
@@ -968,22 +968,22 @@ class Node:
         )
         return self
 
-    def construct_thresh_m(self, k, keys_n):
+    def construct_multi(self, k, keys_n):
         self._k = k
         n = len(keys_n)
         assert n >= k >= 1
         prop_str = "Bnudems"
         self._pk_n = [key.bytes() for key in keys_n]
-        desc = "thresh_m(" + str(k) + ","
+        desc = "multi(" + str(k) + ","
         for idx, key_b in enumerate(self._pk_n):
             desc += key_b.hex()
             desc += "," if idx != (n - 1) else ")"
         self._construct(
-            NodeType.THRESH_M,
+            NodeType.MULTI,
             Property(prop_str),
             [],
-            self._thresh_m_sat,
-            self._thresh_m_dsat,
+            self._multi_sat,
+            self._multi_dsat,
             [k, *self._pk_n, n, OP_CHECKMULTISIG],
             desc,
         )
@@ -1535,11 +1535,11 @@ class Node:
     def _just_0_dsat(self):
         return [[]]
 
-    def _pk_sat(self):
+    def _pk_k_sat(self):
         # Returns (SIGNATURE, 33B_PK) tuple.
-        return [[(SatType.SIGNATURE, self._pk[0])]]
+        return [[(SatType.SIGNATURE, self._pk_k[0])]]
 
-    def _pk_dsat(self):
+    def _pk_k_dsat(self):
         return [[(SatType.DATA, b"")]]
 
     def _pk_h_sat(self):
@@ -1590,8 +1590,8 @@ class Node:
     def _hash160_dsat(self):
         return [[(SatType.DATA, bytes(32))]]
 
-    def _thresh_m_sat(self):
-        thresh_m_sat_ls = []
+    def _multi_sat(self):
+        multi_sat_ls = []
         n = len(self._pk_n)
         for i in range(2 ** n):
             if bin(i).count("1") == self._k:
@@ -1599,10 +1599,10 @@ class Node:
                 for j in range(n):
                     if ((1 << j) & i) != 0:
                         sat.append((SatType.SIGNATURE, self._pk_n[j]))
-                thresh_m_sat_ls.append(sat)
-        return thresh_m_sat_ls
+                multi_sat_ls.append(sat)
+        return multi_sat_ls
 
-    def _thresh_m_dsat(self):
+    def _multi_dsat(self):
         return [[(SatType.DATA, b"")] * (self._k + 1)]
 
     # sat/dsat methods for node types with children:
