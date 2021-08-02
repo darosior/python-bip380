@@ -19,9 +19,8 @@ class Property:
     # "f": Forced property
     # "s": Safe property
     # "m": Nonmalleable property
-    # "x": Expensive verify
     types = "BVKW"
-    props = "zonduefsmx"
+    props = "zonduefsm"
 
     def __init__(self, property_str=""):
         """Create a property, optionally from a str of property and types"""
