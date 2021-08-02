@@ -118,6 +118,10 @@ class Node:
         if tag == "1":
             return Node().construct_just_1()
 
+        if tag == "pk":
+            key_obj = MiniscriptKey(child_exprs[0])
+            return Node().construct_c(Node().construct_pk_k(key_obj))
+
         if tag == "pk_k":
             key_obj = MiniscriptKey(child_exprs[0])
             return Node().construct_pk_k(key_obj)
