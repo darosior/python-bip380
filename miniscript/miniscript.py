@@ -994,6 +994,7 @@ class Node:
         return self
 
     def construct_and_v(self, child_x, child_y):
+        assert child_x.p.V
         prop_str = ""
         prop_str += "B" if child_x.p.V and child_y.p.B else ""
         prop_str += "K" if child_x.p.V and child_y.p.K else ""
@@ -1304,6 +1305,7 @@ class Node:
         return self
 
     def construct_t(self, child_x):
+        assert child_x.p.V
         prop_str = "uf"
         prop_str += "B" if child_x.p.V else ""
         prop_str += "n" if child_x.p.n else ""
