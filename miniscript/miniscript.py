@@ -98,6 +98,7 @@ class Node:
     """
 
     def __init__(self):
+        # TODO: rename (or remove..)
         self.desc = ""
         self.children = None
         self.t = None
@@ -106,6 +107,7 @@ class Node:
         self._pk_k = []
         self._pk_h = None
 
+    # TODO: rename..
     @staticmethod
     def from_desc(string):
         """Construct miniscript node from string descriptor"""
@@ -135,6 +137,7 @@ class Node:
             return Node().construct_older(n)
 
         if tag == "after":
+            # FIXME: rename
             time = int(child_exprs[0])
             return Node().construct_after(time)
 
@@ -350,6 +353,7 @@ class Node:
                         # Recursive parse of remaining top-level nodes.
                         return Node._parse_expr_list(expr_list)
                     except Exception:
+                        # FIXME: remove this pattern..
                         pass
 
                 # Match against t wrapper.
@@ -363,6 +367,7 @@ class Node:
                         expr_list = expr_list[:idx] + [node] + expr_list[idx + 2 :]
                         return Node._parse_expr_list(expr_list)
                     except Exception:
+                        # FIXME: remove this pattern..
                         pass
 
                 # Match against v wrapper.
@@ -589,7 +594,7 @@ class Node:
 
             # Match against multi.
             # Termainal expression, but k and n values can be Nodes (JUST_0/1)
-            if expr_list_len - idx >= 5 and (
+            if expr_list_len - idx >= 3 and (
                 (
                     isinstance(expr_list[idx], int)
                     and expr_list_len - idx - 3 >= expr_list[idx] >= 1
@@ -602,7 +607,7 @@ class Node:
                 k = Node._coerce_to_int(expr_list[idx])
                 # Permissible values for n:
                 # len(expr)-3 >= n >= 1
-                for n in range(k, expr_list_len - 2):
+                for n in range(idx, expr_list_len - 2):
                     # Match ... <PK_K>*n ...
                     match, pk_m = True, []
                     for i in range(n):
