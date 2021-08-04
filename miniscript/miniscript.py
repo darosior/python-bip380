@@ -901,7 +901,7 @@ class Node:
         return self
 
     def construct_older(self, delay):
-        assert delay >= 1
+        assert delay > 0 and delay < 2 ** 31
         self._delay = delay
         self._construct(
             NodeType.OLDER,
