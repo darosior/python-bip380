@@ -111,15 +111,6 @@ def test_compat_valid():
     with open(valid_samples, "r") as f:
         for line in f:
             ms, hexscript = line.strip().split(" ")
-
-            # FIXME: decide whether pk_h() should contain a hash or a key and remove
-            # this hack
-            import re
-            # This could have been a nit re.sub(), but no backslash in fstrings
-            for key in re.findall(r"pk_h\(.{66}\)", ms):
-                hashed = hash160(key[5:-1])
-                ms = ms.replace(key[5:-1], hashed.hex())
-
             assert Node.from_desc(ms).script.hex() == hexscript
 
 

@@ -3,6 +3,8 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Classes and methods to encode and decode miniscripts"""
+import hashlib
+
 from enum import Enum
 from itertools import product
 
@@ -38,6 +40,12 @@ from .script import (
     OP_VERIFY,
     OP_0NOTEQUAL,
 )
+
+
+def hash160(data):
+    """{data} must be bytes, returns ripemd160(sha256(data))"""
+    sha2 = hashlib.sha256(data).digest()
+    return hashlib.new("ripemd160", sha2).digest()
 
 
 class NodeType(Enum):
@@ -886,17 +894,23 @@ class Node:
         )
         return self
 
-    def construct_pk_h(self, pk_hash_digest):
-        assert isinstance(pk_hash_digest, bytes) and len(pk_hash_digest) == 20
-        self._pk_h = pk_hash_digest
+    def construct_pk_h(self, pk_or_pkhash):
+        """Can be either a key or a keyhash, for now."""
+        assert isinstance(pk_or_pkhash, bytes) and len(pk_or_pkhash) in [20, 33]
+        if len(pk_or_pkhash) == 20:
+            h = pk_or_pkhash
+        else:
+            self._pk_k = pk_or_pkhash
+            h = hash160(pk_or_pkhash)
+        self._pk_h = h
         self._construct(
             NodeType.PK_H,
             Property("Knudems"),
             [],
             self._pk_h_sat,
             self._pk_h_dsat,
-            [OP_DUP, OP_HASH160, pk_hash_digest, OP_EQUALVERIFY],
-            "pk_h(" + pk_hash_digest.hex() + ")",
+            [OP_DUP, OP_HASH160, h, OP_EQUALVERIFY],
+            "pk_h(" + h.hex() + ")",
         )
         return self
 
