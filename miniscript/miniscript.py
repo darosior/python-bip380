@@ -1007,6 +1007,8 @@ class Node:
 
     def construct_and_v(self, child_x, child_y):
         assert child_x.p.V
+        assert any([getattr(child_y.p, t) for t in "BKV"])
+
         prop_str = ""
         prop_str += "B" if child_x.p.V and child_y.p.B else ""
         prop_str += "K" if child_x.p.V and child_y.p.K else ""
@@ -1034,6 +1036,8 @@ class Node:
         return self
 
     def construct_and_b(self, child_x, child_y):
+        assert child_x.p.B and child_y.p.W
+
         prop_str = "u"
         prop_str += "B" if child_x.p.B and child_y.p.W else ""
         prop_str += "z" if child_x.p.z and child_y.p.z else ""
@@ -1090,8 +1094,9 @@ class Node:
         return self
 
     def construct_or_b(self, child_x, child_z):
-        assert child_x.p.d and child_z.p.d
-        assert (child_x.p.f or child_z.p.f) is False
+        assert all([getattr(child_x.p, pt) for pt in "Bd"])
+        assert all([getattr(child_z.p, pt) for pt in "Wd"])
+
         prop_str = "du"
         prop_str += "B" if child_x.p.B and child_z.p.W else ""
         prop_str += "z" if child_x.p.z and child_z.p.z else ""
@@ -1123,7 +1128,9 @@ class Node:
         return self
 
     def construct_or_d(self, child_x, child_z):
-        assert child_x.p.d and child_x.p.u
+        assert all([getattr(child_x.p, pt) for pt in "Bdu"])
+        assert child_z.p.B
+
         prop_str = ""
         prop_str += "B" if child_x.p.B and child_z.p.B else ""
         prop_str += "z" if child_x.p.z and child_z.p.z else ""
@@ -1180,6 +1187,9 @@ class Node:
         return self
 
     def construct_or_i(self, child_x, child_z):
+        for child in child_x, child_z:
+            assert any([getattr(child.p, t) for t in "BKV"])
+
         prop_str = ""
         prop_str += "B" if child_x.p.B and child_z.p.B else ""
         prop_str += "K" if child_x.p.K and child_z.p.K else ""
@@ -1209,7 +1219,12 @@ class Node:
         return self
 
     def construct_andor(self, child_x, child_y, child_z):
-        assert child_x.p.d and child_x.p.u
+        # TODO: have methods to the Property to check_all and check_any
+        # X is Bdu; Y and Z are both B, K, or V
+        assert all([getattr(child_x.p, pt) for pt in "Bdu"])
+        for child in child_y, child_z:
+            assert any([getattr(child.p, t) for t in "BKV"])
+
         prop_str = ""
         prop_str += "B" if child_x.p.B and child_y.p.B and child_z.p.B else ""
         prop_str += "K" if child_x.p.B and child_y.p.K and child_z.p.K else ""
