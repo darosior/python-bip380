@@ -105,7 +105,10 @@ class Node:
         self._sat = None
         self._k = None
         self._pk_k = []
-        self._pk_h = None
+        self._pk_h = []
+
+    def __repr__(self):
+        return f"{self.t}(k = {self._k}, pk_k = {[k.hex() for k in self._pk_k]}, pk_h = {[k.hex() for k in self._pk_h]})"
 
     # TODO: rename..
     @staticmethod
@@ -127,6 +130,10 @@ class Node:
         if tag == "pk_k":
             key_obj = MiniscriptKey(child_exprs[0])
             return Node().construct_pk_k(key_obj)
+
+        if tag == "pkh":
+            keyhash = bytes.fromhex(child_exprs[0])
+            return Node().construct_c(Node().construct_pk_h(keyhash))
 
         if tag == "pk_h":
             keyhash_b = bytes.fromhex(child_exprs[0])

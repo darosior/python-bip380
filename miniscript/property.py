@@ -3,6 +3,7 @@ class MiniscriptPropertyError(ValueError):
         self.message = message
 
 
+# TODO: implement __eq__
 class Property:
     """Miniscript expression property"""
 
