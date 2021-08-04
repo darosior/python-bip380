@@ -1469,7 +1469,7 @@ class Node:
 
     def construct_thresh(self, k, children_n):
         n = len(children_n)
-        assert n > k > 1
+        assert n >= k >= 1
         child_is_z_count = 0
         child_is_o_count = 0
         child_is_s_count = 0
