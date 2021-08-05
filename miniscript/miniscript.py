@@ -1021,7 +1021,7 @@ class Node:
 
     def construct_and_v(self, child_x, child_y):
         assert child_x.p.V
-        assert any([getattr(child_y.p, t) for t in "BKV"])
+        assert child_y.p.has_any("BKV")
 
         prop_str = ""
         prop_str += "B" if child_x.p.V and child_y.p.B else ""
@@ -1108,8 +1108,8 @@ class Node:
         return self
 
     def construct_or_b(self, child_x, child_z):
-        assert all([getattr(child_x.p, pt) for pt in "Bd"])
-        assert all([getattr(child_z.p, pt) for pt in "Wd"])
+        assert child_x.p.has_all("Bd")
+        assert child_z.p.has_all("Wd")
 
         prop_str = "du"
         prop_str += "B" if child_x.p.B and child_z.p.W else ""
@@ -1142,7 +1142,7 @@ class Node:
         return self
 
     def construct_or_d(self, child_x, child_z):
-        assert all([getattr(child_x.p, pt) for pt in "Bdu"])
+        assert child_x.p.has_all("Bdu")
         assert child_z.p.B
 
         prop_str = ""
@@ -1202,7 +1202,7 @@ class Node:
 
     def construct_or_i(self, child_x, child_z):
         for child in child_x, child_z:
-            assert any([getattr(child.p, t) for t in "BKV"])
+            assert child.p.has_any("BKV")
 
         prop_str = ""
         prop_str += "B" if child_x.p.B and child_z.p.B else ""
@@ -1233,11 +1233,9 @@ class Node:
         return self
 
     def construct_andor(self, child_x, child_y, child_z):
-        # TODO: have methods to the Property to check_all and check_any
-        # X is Bdu; Y and Z are both B, K, or V
-        assert all([getattr(child_x.p, pt) for pt in "Bdu"])
+        assert child_x.p.has_all("Bdu")
         for child in child_y, child_z:
-            assert any([getattr(child.p, t) for t in "BKV"])
+            assert child.p.has_any("BKV")
 
         prop_str = ""
         prop_str += "B" if child_x.p.B and child_y.p.B and child_z.p.B else ""

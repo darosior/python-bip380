@@ -36,6 +36,14 @@ class Property:
         """Generate string representation of property"""
         return "".join([c for c in self.types + self.props if getattr(self, c)])
 
+    def has_all(self, properties):
+        """Given a str of types and properties, return whether we have all of them"""
+        return all([getattr(self, pt) for pt in properties])
+
+    def has_any(self, properties):
+        """Given a str of types and properties, return whether we have at least one of them"""
+        return any([getattr(self, pt) for pt in properties])
+
     def check_valid(self):
         """Raises a MiniscriptPropertyError if the types/properties conflict"""
         # Can only be of a single type.
