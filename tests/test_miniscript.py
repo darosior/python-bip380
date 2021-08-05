@@ -35,6 +35,8 @@ def roundtrip(ms_str):
     assert str(node_a.p) == str(node_b.p)
     assert node_a.t == node_b.t
 
+    return node_b
+
 
 def test_simple_sanity_checks():
     """Some quick and basic sanity checks of the implem. The place to add new findings."""
@@ -46,6 +48,21 @@ def test_simple_sanity_checks():
         "and_v(v:pk(027a1b8c69c6a4e90ce85e0dd6fb99c51ef8af35b88f20f9f74f8f937f7acaec15),pk(023c110f0946ed6160ee95eee86efb79d13421d1b460f592b04dd21d74852d7631))"
     )
     assert aliased.script == not_aliased.script
+
+    assert roundtrip("older(1)")._delay == 1
+    assert roundtrip("older(255)")._delay == 255
+    assert roundtrip("older(16407)")._delay == 16407
+    assert roundtrip("older(1621038656)")._delay == 1621038656
+    assert roundtrip("after(1)")._time == 1
+    assert roundtrip("after(255)")._time == 255
+    assert roundtrip("after(16407)")._time == 16407
+    assert roundtrip("after(1621038656)")._time == 1621038656
+    # CSV with a negative value
+    with pytest.raises(Exception):
+        Node.from_script(b"\x86\x92\xB2")
+    # CLTV with a negative value
+    with pytest.raises(Exception):
+        Node.from_script(b"\x86\x92\xB1")
 
     roundtrip(f"pk({dummy_pk()})")
     roundtrip(f"pk_k({dummy_pk()})")

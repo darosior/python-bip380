@@ -12,6 +12,7 @@ from .key import MiniscriptKey
 from .property import Property
 from .script import (
     CScript,
+    CScriptOp,
     OP_ADD,
     OP_BOOLAND,
     OP_BOOLOR,
@@ -39,6 +40,8 @@ from .script import (
     OP_TOALTSTACK,
     OP_VERIFY,
     OP_0NOTEQUAL,
+    read_script_number,
+    ScriptNumError,
 )
 
 
@@ -95,6 +98,60 @@ class SatType(Enum):
     RIPEMD160_PREIMAGE = 6  # Value: 20B RIPEMD160 Digest
     HASH160_PREIMAGE = 7  # Value: 20B HASH160 Digest
     DATA = 8  # Value: Bytes
+
+
+def stack_item_to_int(item):
+    """
+    Convert a stack item to an integer depending on its type.
+    May raise an exception if the item is bytes, otherwise return None if it
+    cannot perform the conversion.
+    """
+    if isinstance(item, bytes):
+        return read_script_number(item)
+
+    if isinstance(item, Node):
+        if item.t == NodeType.JUST_1:
+            return 1
+        if item.t == NodeType.JUST_0:
+            return 0
+
+    if isinstance(item, int):
+        return item
+
+    return None
+
+
+def parse_term_2_elems(expr_list, idx):
+    """
+    Try to parse a terminal node from two elements of {expr_list}, starting
+    from {idx}.
+    Return the new expression list on success, None on error.
+    """
+    elem_a = expr_list[idx]
+    elem_b = expr_list[idx + 1]
+
+    # Only older() and after() as term with 2 stack items
+    if not isinstance(elem_b, CScriptOp):
+        return
+    try:
+        n = stack_item_to_int(elem_a)
+        if n is None:
+            return
+    except ScriptNumError:
+        return
+
+    if n <= 0 or n >= 2 ** 31:
+        return
+
+    if elem_b == OP_CHECKSEQUENCEVERIFY:
+        node = Node().construct_older(n)
+        return expr_list[:idx] + [node] + expr_list[idx + 2 :]
+
+    if elem_b == OP_CHECKLOCKTIMEVERIFY:
+        node = Node().construct_after(n)
+        return expr_list[:idx] + [node] + expr_list[idx + 2 :]
+
+    return None
 
 
 class Node:
@@ -185,6 +242,7 @@ class Node:
     @staticmethod
     def from_script(c_script):
         """Construct miniscript node from script"""
+        # FIXME: avoid looping 45678 times ..
         expr_list = []
         for op in c_script:
             # Encode 0, 20, 32 as int.
@@ -225,25 +283,10 @@ class Node:
 
             # 2 element terminal expressions.
             if expr_list_len - idx >= 2:
-                try:
-                    # Timelock encoding n.
-                    n_int = Node._coerce_to_int(expr_list[idx])
-                    # Match against older.
-                    if n_int >= 1 and expr_list[idx + 1] == OP_CHECKSEQUENCEVERIFY:
-                        node = Node().construct_older(n_int)
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 2 :]
-                        expr_list_len -= 1
-                    # Match against after.
-                    elif (
-                        n_int >= 1
-                        and n_int <= 2 ** 32
-                        and expr_list[idx + 1] == OP_CHECKLOCKTIMEVERIFY
-                    ):
-                        node = Node().construct_after(n_int)
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 2 :]
-                        expr_list_len -= 1
-                except Exception:
-                    pass
+                new_expr_list = parse_term_2_elems(expr_list, idx)
+                if new_expr_list is not None:
+                    expr_list = new_expr_list
+                    expr_list_len = len(expr_list)
 
             # 4 element terminal expressions.
             if expr_list_len - idx >= 5:
@@ -930,6 +973,7 @@ class Node:
 
     def construct_after(self, time):
         assert time >= 1 and time < 2 ** 31
+        # FIXME: rename this, 'time' is confusing
         self._time = time
         self._construct(
             NodeType.AFTER,

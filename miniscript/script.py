@@ -199,6 +199,33 @@ OPCODE_NAMES.update(
 )
 
 
+class ScriptNumError(ValueError):
+    def __init__(self, message):
+        self.message = message
+
+
+def read_script_number(data):
+    """Read a Script number from {data} bytes"""
+    size = len(data)
+    if size > 4:
+        raise ScriptNumError("Too large push")
+
+    if size == 0:
+        return 0
+
+    # We always check for minimal encoding
+    if (data[size - 1] & 0x7f) == 0:
+        if size == 1 or (data[size - 2] & 0x80) == 0:
+            raise ScriptNumError("Non minimal encoding")
+
+    res = int.from_bytes(data, byteorder="little")
+
+    # Remove the sign bit if set, and negate the result
+    if data[size - 1] & 0x80:
+        return -(res & ~(0x80 << (size - 1)))
+    return res
+
+
 class CScriptInvalidError(Exception):
     """Base class for CScript exceptions"""
 
