@@ -1,3 +1,8 @@
+# Copyright (c) 2015-2020 The Bitcoin Core developers
+# Copyright (c) 2021 Antoine Poinsot
+# Distributed under the MIT software license, see the accompanying
+# file LICENSE or http://www.opensource.org/licenses/mit-license.php.
+
 from bip32 import BIP32
 from bip32.utils import coincurve
 
