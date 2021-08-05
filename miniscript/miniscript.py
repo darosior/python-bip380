@@ -121,6 +121,27 @@ def stack_item_to_int(item):
     return None
 
 
+def parse_term_single_elem(expr_list, idx):
+    """
+    Try to parse a terminal node from the element of {expr_list} at {idx}.
+    """
+    # Match against pk_k(key).
+    if (
+        isinstance(expr_list[idx], bytes)
+        and len(expr_list[idx]) == 33
+        and expr_list[idx][0] in [2, 3]
+    ):
+        key = MiniscriptKey(expr_list[idx])
+        expr_list[idx] = Node().construct_pk_k(key)
+
+    # Match against JUST_1 and JUST_0.
+    if expr_list[idx] == 1:
+        expr_list[idx] = Node().construct_just_1()
+    if expr_list[idx] == 0:
+        expr_list[idx] = Node().construct_just_0()
+
+
+# TODO: these parse_term functions don't need to return the expr_list
 def parse_term_2_elems(expr_list, idx):
     """
     Try to parse a terminal node from two elements of {expr_list}, starting
@@ -145,13 +166,88 @@ def parse_term_2_elems(expr_list, idx):
 
     if elem_b == OP_CHECKSEQUENCEVERIFY:
         node = Node().construct_older(n)
-        return expr_list[:idx] + [node] + expr_list[idx + 2 :]
+        expr_list[idx : idx + 2] = [node]
+        return expr_list
 
     if elem_b == OP_CHECKLOCKTIMEVERIFY:
         node = Node().construct_after(n)
-        return expr_list[:idx] + [node] + expr_list[idx + 2 :]
+        expr_list[idx : idx + 2] = [node]
+        return expr_list
 
     return None
+
+
+def parse_term_5_elems(expr_list, idx):
+    """
+    Try to parse a terminal node from five elements of {expr_list}, starting
+    from {idx}.
+    Return the new expression list on success, None on error.
+    """
+    # The only 3 items node is pk_h
+    if expr_list[idx : idx + 2] != [OP_DUP, OP_HASH160]:
+        return
+    if not isinstance(expr_list[idx + 2], bytes):
+        return
+    if len(expr_list[idx + 2]) != 20:
+        return
+    if expr_list[idx + 3 : idx + 5] != [OP_EQUAL, OP_VERIFY]:
+        return
+
+    node = Node().construct_pk_h(expr_list[idx + 2])
+    expr_list[idx : idx + 5] = [node]
+    return expr_list
+
+
+def parse_term_7_elems(expr_list, idx):
+    """
+    Try to parse a terminal node from seven elements of {expr_list}, starting
+    from {idx}.
+    Return the new expression list on success, None on error.
+    """
+    # Note how all the hashes are 7 elems because the VERIFY was decomposed
+    # Match against sha256.
+    if (
+        expr_list[idx : idx + 5] == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_SHA256]
+        and isinstance(expr_list[idx + 5], bytes)
+        and len(expr_list[idx + 5]) == 32
+        and expr_list[idx + 6] == OP_EQUAL
+    ):
+        node = Node().construct_sha256(expr_list[idx + 5])
+        expr_list[idx : idx + 7] = [node]
+        return expr_list
+
+    # Match against hash256.
+    if (
+        expr_list[idx : idx + 5] == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_HASH256]
+        and isinstance(expr_list[idx + 5], bytes)
+        and len(expr_list[idx + 5]) == 32
+        and expr_list[idx + 6] == OP_EQUAL
+    ):
+        node = Node().construct_hash256(expr_list[idx + 5])
+        expr_list[idx : idx + 7] = [node]
+        return expr_list
+
+    # Match against ripemd160.
+    if (
+        expr_list[idx : idx + 5] == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_RIPEMD160]
+        and isinstance(expr_list[idx + 5], bytes)
+        and len(expr_list[idx + 5]) == 20
+        and expr_list[idx + 6] == OP_EQUAL
+    ):
+        node = Node().construct_ripemd160(expr_list[idx + 5])
+        expr_list[idx : idx + 7] = [node]
+        return expr_list
+
+    # Match against hash160.
+    if (
+        expr_list[idx : idx + 5] == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_HASH160]
+        and isinstance(expr_list[idx + 5], bytes)
+        and len(expr_list[idx + 5]) == 20
+        and expr_list[idx + 6] == OP_EQUAL
+    ):
+        node = Node().construct_hash160(expr_list[idx + 5])
+        expr_list[idx : idx + 7] = [node]
+        return expr_list
 
 
 class Node:
@@ -263,98 +359,26 @@ class Node:
         # Parse for terminal expressions.
         idx = 0
         while idx < expr_list_len:
+            parse_term_single_elem(expr_list, idx)
 
-            # Match against pk_k(key).
-            if (
-                isinstance(expr_list[idx], bytes)
-                and len(expr_list[idx]) == 33
-                and expr_list[idx][0] in [2, 3]
-            ):
-                key = MiniscriptKey(expr_list[idx])
-                expr_list[idx] = Node().construct_pk_k(key)
-
-            # Match against just1.
-            if expr_list[idx] == 1:
-                expr_list[idx] = Node().construct_just_1()
-
-            # Match against just0.
-            if expr_list[idx] == 0:
-                expr_list[idx] = Node().construct_just_0()
-
-            # 2 element terminal expressions.
             if expr_list_len - idx >= 2:
                 new_expr_list = parse_term_2_elems(expr_list, idx)
                 if new_expr_list is not None:
                     expr_list = new_expr_list
                     expr_list_len = len(expr_list)
 
-            # 4 element terminal expressions.
             if expr_list_len - idx >= 5:
+                new_expr_list = parse_term_5_elems(expr_list, idx)
+                if new_expr_list is not None:
+                    expr_list = new_expr_list
+                    expr_list_len = len(expr_list)
 
-                # Match against pk_h(pkhash).
-                if (
-                    expr_list[idx : idx + 2] == [OP_DUP, OP_HASH160]
-                    and isinstance(expr_list[idx + 2], bytes)
-                    and len(expr_list[idx + 2]) == 20
-                    and expr_list[idx + 3 : idx + 5] == [OP_EQUAL, OP_VERIFY]
-                ):
-                    node = Node().construct_pk_h(expr_list[idx + 2])
-                    expr_list = expr_list[:idx] + [node] + expr_list[idx + 5 :]
-                    # Reduce length of list after node construction.
-                    expr_list_len -= 4
-
-            # 6 element terminal expressions.
             if expr_list_len - idx >= 7:
+                new_expr_list = parse_term_7_elems(expr_list, idx)
+                if new_expr_list is not None:
+                    expr_list = new_expr_list
+                    expr_list_len = len(expr_list)
 
-                # Match against sha256.
-                if (
-                    expr_list[idx : idx + 5]
-                    == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_SHA256]
-                    and isinstance(expr_list[idx + 5], bytes)
-                    and len(expr_list[idx + 5]) == 32
-                    and expr_list[idx + 6] == OP_EQUAL
-                ):
-                    node = Node().construct_sha256(expr_list[idx + 5])
-                    expr_list = expr_list[:idx] + [node] + expr_list[idx + 7 :]
-                    expr_list_len -= 6
-
-                # Match against hash256.
-                if (
-                    expr_list[idx : idx + 5]
-                    == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_HASH256]
-                    and isinstance(expr_list[idx + 5], bytes)
-                    and len(expr_list[idx + 5]) == 32
-                    and expr_list[idx + 6] == OP_EQUAL
-                ):
-                    node = Node().construct_hash256(expr_list[idx + 5])
-                    expr_list = expr_list[:idx] + [node] + expr_list[idx + 7 :]
-                    expr_list_len -= 6
-
-                # Match against ripemd160.
-                if (
-                    expr_list[idx : idx + 5]
-                    == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_RIPEMD160]
-                    and isinstance(expr_list[idx + 5], bytes)
-                    and len(expr_list[idx + 5]) == 20
-                    and expr_list[idx + 6] == OP_EQUAL
-                ):
-                    node = Node().construct_ripemd160(expr_list[idx + 5])
-                    expr_list = expr_list[:idx] + [node] + expr_list[idx + 7 :]
-                    expr_list_len -= 6
-
-                # Match against hash160.
-                if (
-                    expr_list[idx : idx + 5]
-                    == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_HASH160]
-                    and isinstance(expr_list[idx + 5], bytes)
-                    and len(expr_list[idx + 5]) == 20
-                    and expr_list[idx + 6] == OP_EQUAL
-                ):
-                    node = Node().construct_hash160(expr_list[idx + 5])
-                    expr_list = expr_list[:idx] + [node] + expr_list[idx + 7 :]
-                    expr_list_len -= 6
-
-            # Increment index.
             idx += 1
 
         # Construct AST recursively.
