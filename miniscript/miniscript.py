@@ -297,8 +297,8 @@ def parse_nonterm_2_elems(expr_list, idx):
 
 def parse_nonterm_3_elems(expr_list, idx):
     """
-    Try to parse a non-terminal node from three elements of {expr_list}, starting
-    from {idx}.
+    Try to parse a non-terminal node from *at least* three elements of
+    {expr_list}, starting from {idx}.
     Return the new expression list on success, None on error.
     """
     elem_a = expr_list[idx]
@@ -327,6 +327,37 @@ def parse_nonterm_3_elems(expr_list, idx):
     ):
         node = Node().construct_a(elem_b)
         expr_list[idx : idx + 3] = [node]
+        return expr_list
+
+    # Match against a multi.
+    try:
+        k = stack_item_to_int(expr_list[idx])
+    except ScriptNumError:
+        return
+    if k is None:
+        return
+    # <k> (<key>)* <m> CHECKMULTISIG
+    if k > len(expr_list[idx + 1 :]) - 2:
+        return
+    # Get the keys
+    keys = []
+    i = idx + 1
+    while idx < len(expr_list) - 2:
+        if not isinstance(expr_list[i], Node) or expr_list[i].t != NodeType.PK_K:
+            break
+        keys.append(MiniscriptKey(expr_list[i]._pk_k[0]))
+        i += 1
+    if expr_list[i + 1] == OP_CHECKMULTISIG:
+        if k > len(keys):
+            return
+        try:
+            m = stack_item_to_int(expr_list[i])
+        except ScriptNumError:
+            return
+        if m is None or m != len(keys):
+            return
+        node = Node().construct_multi(k, keys)
+        expr_list[idx : i + 2] = [node]
         return expr_list
 
 
@@ -456,6 +487,47 @@ def parse_nonterm_5_elems(expr_list, idx):
     ):
         node = Node().construct_u(it_b)
         expr_list[idx : idx + 5] = [node]
+        return expr_list
+
+
+def parse_nonterm_6_elems(expr_list, idx):
+    """
+    Try to parse a non-terminal node from six elements of {expr_list}, starting
+    from {idx}.
+    Return the new expression list on success, None on error.
+    """
+    (it_a, it_b, it_c, it_d, it_e, it_f) = expr_list[idx : idx + 6]
+
+    # Match against and_n.
+    if (
+        isinstance(it_a, Node)
+        and it_a.p.has_all("Bdu")
+        and it_b == OP_NOTIF
+        and isinstance(it_c, Node)
+        and it_c.t == NodeType.JUST_0
+        and it_d == OP_ELSE
+        and isinstance(it_e, Node)
+        and it_e.p.has_any("BKV")
+        and it_f == OP_ENDIF
+    ):
+        node = Node().construct_and_n(it_a, it_e)
+        expr_list[idx : idx + 6] = [node]
+        return expr_list
+
+    # Match against andor.
+    if (
+        isinstance(it_a, Node)
+        and it_a.p.has_all("Bdu")
+        and it_b == OP_NOTIF
+        and isinstance(it_c, Node)
+        and it_c.p.has_any("BKV")
+        and it_d == OP_ELSE
+        and isinstance(it_e, Node)
+        and it_e.p.has_any("BKV")
+        and it_f == OP_ENDIF
+    ):
+        node = Node().construct_andor(it_a, it_e, it_c)
+        expr_list[idx : idx + 6] = [node]
         return expr_list
 
 
@@ -635,90 +707,10 @@ class Node:
                 if new_expr_list is not None:
                     return Node._parse_expr_list(new_expr_list)
 
-            # 6 element expressions.
             if expr_list_len - idx >= 6:
-
-                # Match against and_n.
-                if (
-                    isinstance(expr_list[idx], Node)
-                    and expr_list[idx + 1] == OP_NOTIF
-                    and isinstance(expr_list[idx + 2], Node)
-                    and expr_list[idx + 2].t == NodeType.JUST_0
-                    and expr_list[idx + 3] == OP_ELSE
-                    and isinstance(expr_list[idx + 4], Node)
-                    and expr_list[idx + 5] == OP_ENDIF
-                ):
-                    try:
-                        node = Node().construct_and_n(
-                            expr_list[idx], expr_list[idx + 4]
-                        )
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 6 :]
-                        return Node._parse_expr_list(expr_list)
-                    except Exception:
-                        pass
-
-                # Match against andor.
-                if (
-                    isinstance(expr_list[idx], Node)
-                    and expr_list[idx + 1] == OP_NOTIF
-                    and isinstance(expr_list[idx + 2], Node)
-                    and expr_list[idx + 3] == OP_ELSE
-                    and isinstance(expr_list[idx + 4], Node)
-                    and expr_list[idx + 5] == OP_ENDIF
-                ):
-                    try:
-                        node = Node().construct_andor(
-                            expr_list[idx], expr_list[idx + 4], expr_list[idx + 2]
-                        )
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 6 :]
-                        return Node._parse_expr_list(expr_list)
-                    except Exception:
-                        pass
-
-            # Match against multi.
-            # Termainal expression, but k and n values can be Nodes (JUST_0/1)
-            if expr_list_len - idx >= 3 and (
-                (
-                    isinstance(expr_list[idx], int)
-                    and expr_list_len - idx - 3 >= expr_list[idx] >= 1
-                )
-                or (
-                    isinstance(expr_list[idx], Node)
-                    and expr_list[idx].t == NodeType.JUST_1
-                )
-            ):
-                k = Node._coerce_to_int(expr_list[idx])
-                # Permissible values for n:
-                # len(expr)-3 >= n >= 1
-                for n in range(idx, expr_list_len - 2):
-                    # Match ... <PK_K>*n ...
-                    match, pk_m = True, []
-                    for i in range(n):
-                        if not (
-                            isinstance(expr_list[idx + 1 + i], Node)
-                            and expr_list[idx + 1 + i].t == NodeType.PK_K
-                        ):
-                            match = False
-                            break
-                        else:
-                            key = MiniscriptKey(expr_list[idx + 1 + i]._pk_k[0])
-                            pk_m.append(key)
-                    # Match ... <m> <OP_CHECKMULTISIG>
-                    if match is True:
-                        m = Node._coerce_to_int(expr_list[idx + n + 1])
-                        if (
-                            isinstance(m, int)
-                            and m == len(pk_m)
-                            and expr_list[idx + n + 2] == OP_CHECKMULTISIG
-                        ):
-                            try:
-                                node = Node().construct_multi(k, pk_m)
-                                expr_list = (
-                                    expr_list[:idx] + [node] + expr_list[idx + n + 3 :]
-                                )
-                                return Node._parse_expr_list(expr_list)
-                            except Exception:
-                                pass
+                new_expr_list = parse_nonterm_6_elems(expr_list, idx)
+                if new_expr_list is not None:
+                    return Node._parse_expr_list(new_expr_list)
 
             # Right-to-left parsing.
             # Step one position left.
