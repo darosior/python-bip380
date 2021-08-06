@@ -264,7 +264,7 @@ def parse_nonterm_2_elems(expr_list, idx):
         if isinstance(elem_b, Node) and elem_a.p.V and elem_b.p.has_any("BKV"):
             # Is it a special case of t: wrapper?
             if elem_b.t == NodeType.JUST_1:
-                node = Node().construct_t(elem_a, elem_b)
+                node = Node().construct_t(elem_a)
             else:
                 node = Node().construct_and_v(elem_a, elem_b)
             expr_list[idx : idx + 2] = [node]
@@ -623,7 +623,6 @@ class Node:
         expr_list = []
         for op in c_script:
             # Encode 0, 20, 32 as int.
-            # Other values are coerced to int types with Node._coerce_to_int()
             if op in [b"", b"\x14", b"\x20"]:
                 op_int = int.from_bytes(op, byteorder="big")
                 expr_list.append(op_int)
@@ -1857,21 +1856,6 @@ class Node:
             )
         else:
             return [[None]]
-
-    # Utility methods.
-    @staticmethod
-    def _coerce_to_int(expr):
-        # Coerce expression to int when iterating through CScript expressions
-        # after terminal expressions have been parsed.
-        if isinstance(expr, bytes):
-            op_int = int.from_bytes(expr, byteorder="big")
-        elif isinstance(expr, Node) and expr.t == NodeType.JUST_0:
-            op_int = 0
-        elif isinstance(expr, Node) and expr.t == NodeType.JUST_1:
-            op_int = 1
-        else:
-            op_int = expr
-        return op_int
 
     @staticmethod
     def _parse_child_strings(child_exprs):
