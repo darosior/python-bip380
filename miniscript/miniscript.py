@@ -297,7 +297,7 @@ def parse_nonterm_2_elems(expr_list, idx):
 
 def parse_nonterm_3_elems(expr_list, idx):
     """
-    Try to parse a non-terminal node from two elements of {expr_list}, starting
+    Try to parse a non-terminal node from three elements of {expr_list}, starting
     from {idx}.
     Return the new expression list on success, None on error.
     """
@@ -327,6 +327,135 @@ def parse_nonterm_3_elems(expr_list, idx):
     ):
         node = Node().construct_a(elem_b)
         expr_list[idx : idx + 3] = [node]
+        return expr_list
+
+
+def parse_nonterm_4_elems(expr_list, idx):
+    """
+    Try to parse a non-terminal node from at least four elements of {expr_list},
+    starting from {idx}.
+    Return the new expression list on success, None on error.
+    """
+    (it_a, it_b, it_c, it_d) = expr_list[idx : idx + 4]
+
+    # Match against thresh. It's of the form [X] ([X] ADD)* k EQUAL
+    if isinstance(it_a, Node) and it_a.p.has_all("Bdu"):
+        subs = [it_a]
+        # The first matches, now do all the ([X] ADD)s and return
+        # if a pair is of the form (k, EQUAL).
+        for i in range(idx + 1, len(expr_list) - 1, 2):
+            if (
+                isinstance(expr_list[i], Node)
+                and expr_list[i].p.has_all("Wdu")
+                and expr_list[i + 1] == OP_ADD
+            ):
+                subs.append(expr_list[i])
+                continue
+            elif expr_list[i + 1] == OP_EQUAL:
+                try:
+                    k = stack_item_to_int(expr_list[i])
+                    if len(subs) >= k >= 1:
+                        node = Node().construct_thresh(k, subs)
+                        expr_list[idx : i + 1 + 1] = [node]
+                        return expr_list
+                except ScriptNumError:
+                    break
+            else:
+                break
+
+    # Match against or_c.
+    if (
+        isinstance(it_a, Node)
+        and it_a.p.has_all("Bdu")
+        and it_b == OP_NOTIF
+        and isinstance(it_c, Node)
+        and it_c.p.V
+        and it_d == OP_ENDIF
+    ):
+        node = Node().construct_or_c(it_a, it_c)
+        expr_list[idx : idx + 4] = [node]
+        return expr_list
+
+    # Match against d wrapper.
+    if (
+        [it_a, it_b] == [OP_DUP, OP_IF]
+        and isinstance(it_c, Node)
+        and it_c.p.has_all("Vz")
+        and it_d == OP_ENDIF
+    ):
+        node = Node().construct_d(it_c)
+        expr_list[idx : idx + 4] = [node]
+        return expr_list
+
+
+def parse_nonterm_5_elems(expr_list, idx):
+    """
+    Try to parse a non-terminal node from five elements of {expr_list}, starting
+    from {idx}.
+    Return the new expression list on success, None on error.
+    """
+    (it_a, it_b, it_c, it_d, it_e) = expr_list[idx : idx + 5]
+
+    # Match against or_d.
+    if (
+        isinstance(it_a, Node)
+        and it_a.p.has_all("Bdu")
+        and [it_b, it_c] == [OP_IFDUP, OP_NOTIF]
+        and isinstance(it_d, Node)
+        and it_d.p.B
+        and it_e == OP_ENDIF
+    ):
+        node = Node().construct_or_d(it_a, it_d)
+        expr_list[idx : idx + 5] = [node]
+        return expr_list
+
+    # Match against or_i.
+    if (
+        it_a == OP_IF
+        and isinstance(it_b, Node)
+        and it_b.p.has_any("BKV")
+        and it_c == OP_ELSE
+        and isinstance(it_d, Node)
+        and it_d.p.has_any("BKV")
+        and it_e == OP_ENDIF
+    ):
+        node = Node().construct_or_i(it_b, it_d)
+        expr_list[idx : idx + 5] = [node]
+        return expr_list
+
+    # Match against j wrapper.
+    if (
+        [it_a, it_b, it_c] == [OP_SIZE, OP_0NOTEQUAL, OP_IF]
+        and isinstance(it_d, Node)
+        and it_e == OP_ENDIF
+    ):
+        node = Node().construct_j(expr_list[idx + 3])
+        expr_list[idx : idx + 5] = [node]
+        return expr_list
+
+    # Match against l wrapper.
+    if (
+        it_a == OP_IF
+        and isinstance(it_b, Node)
+        and it_b.t == NodeType.JUST_0
+        and it_c == OP_ELSE
+        and isinstance(it_d, Node)
+        and it_d.p.has_any("BKV")
+        and it_e == OP_ENDIF
+    ):
+        node = Node().construct_l(it_d)
+        expr_list[idx : idx + 5] = [node]
+        return expr_list
+
+    # Match against u wrapper.
+    if (
+        it_a == OP_IF
+        and isinstance(it_b, Node)
+        and it_b.p.has_any("BKV")
+        and [it_c, it_d, it_e] == [OP_ELSE, 0, OP_ENDIF]
+    ):
+        node = Node().construct_u(it_b)
+        expr_list[idx : idx + 5] = [node]
         return expr_list
 
 
@@ -496,140 +625,15 @@ class Node:
                 if new_expr_list is not None:
                     return Node._parse_expr_list(new_expr_list)
 
-            # 4 element expressions.
             if expr_list_len - idx >= 4:
+                new_expr_list = parse_nonterm_4_elems(expr_list, idx)
+                if new_expr_list is not None:
+                    return Node._parse_expr_list(new_expr_list)
 
-                # Match against thresh. It's of the form [X] ([X] ADD)* k EQUAL
-                node_a = expr_list[idx]
-                if (
-                    isinstance(node_a, Node)
-                    and node_a.p.has_all("Bdu")
-                ):
-                    subs = [node_a]
-                    # The first matches, now do all the ([X] ADD)s and return
-                    # if a pair is of the form (k, EQUAL).
-                    for i in range(idx + 1, expr_list_len - 1, 2):
-                        if (
-                            isinstance(expr_list[i], Node)
-                            and expr_list[i].p.has_all("Wdu")
-                            and expr_list[i + 1] == OP_ADD
-                        ):
-                            subs.append(expr_list[i])
-                            continue
-                        elif expr_list[i + 1] == OP_EQUAL:
-                            try:
-                                k = stack_item_to_int(expr_list[i])
-                                if len(subs) >= k >= 1:
-                                    node = Node().construct_thresh(k, subs)
-                                    expr_list[idx : i + 1 + 1] = [node]
-                                    return Node()._parse_expr_list(expr_list)
-                            except ScriptNumError:
-                                break
-                        else:
-                            break
-
-                # Match against or_c.
-                if (
-                    isinstance(expr_list[idx], Node)
-                    and expr_list[idx + 1] == OP_NOTIF
-                    and isinstance(expr_list[idx + 2], Node)
-                    and expr_list[idx + 3] == OP_ENDIF
-                ):
-                    try:
-                        node = Node().construct_or_c(expr_list[idx], expr_list[idx + 2])
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 4 :]
-                        return Node._parse_expr_list(expr_list)
-                    except Exception:
-                        pass
-
-                # Match against d wrapper.
-                if (
-                    expr_list[idx : idx + 2] == [OP_DUP, OP_IF]
-                    and isinstance(expr_list[idx + 2], Node)
-                    and expr_list[idx + 3] == OP_ENDIF
-                ):
-                    try:
-                        node = Node().construct_d(expr_list[idx + 2])
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 4 :]
-                        return Node._parse_expr_list(expr_list)
-                    except Exception:
-                        pass
-
-            # 5 element expressions.
             if expr_list_len - idx >= 5:
-
-                # Match against or_d.
-                if (
-                    isinstance(expr_list[idx], Node)
-                    and expr_list[idx + 1 : idx + 3] == [OP_IFDUP, OP_NOTIF]
-                    and isinstance(expr_list[idx + 3], Node)
-                    and expr_list[idx + 4] == OP_ENDIF
-                ):
-                    try:
-                        node = Node().construct_or_d(expr_list[idx], expr_list[idx + 3])
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 5 :]
-                        return Node._parse_expr_list(expr_list)
-                    except Exception:
-                        pass
-
-                # Match against or_i.
-                if (
-                    expr_list[idx] == OP_IF
-                    and isinstance(expr_list[idx + 1], Node)
-                    and expr_list[idx + 2] == OP_ELSE
-                    and isinstance(expr_list[idx + 3], Node)
-                    and expr_list[idx + 4] == OP_ENDIF
-                ):
-                    try:
-                        node = Node().construct_or_i(
-                            expr_list[idx + 1], expr_list[idx + 3]
-                        )
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 5 :]
-                        return Node._parse_expr_list(expr_list)
-                    except Exception:
-                        pass
-
-                # Match against j wrapper.
-                if (
-                    expr_list[idx : idx + 3] == [OP_SIZE, OP_0NOTEQUAL, OP_IF]
-                    and isinstance(expr_list[idx + 3], Node)
-                    and expr_list[idx + 4] == OP_ENDIF
-                ):
-                    try:
-                        node = Node().construct_j(expr_list[idx + 3])
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 5 :]
-                        return Node._parse_expr_list(expr_list)
-                    except Exception:
-                        pass
-
-                # Match against l wrapper.
-                if (
-                    expr_list[idx] == OP_IF
-                    and isinstance(expr_list[idx + 1], Node)
-                    and expr_list[idx + 1].t == NodeType.JUST_0
-                    and expr_list[idx + 2] == OP_ELSE
-                    and isinstance(expr_list[idx + 3], Node)
-                    and expr_list[idx + 4] == OP_ENDIF
-                ):
-                    try:
-                        node = Node().construct_l(expr_list[idx + 3])
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 5 :]
-                        return Node._parse_expr_list(expr_list)
-                    except Exception:
-                        pass
-
-                # Match against u wrapper.
-                if (
-                    expr_list[idx] == OP_IF
-                    and isinstance(expr_list[idx + 1], Node)
-                    and expr_list[idx + 2 : idx + 5] == [OP_ELSE, 0, OP_ENDIF]
-                ):
-                    try:
-                        node = Node().construct_u(expr_list[idx + 1])
-                        expr_list = expr_list[:idx] + [node] + expr_list[idx + 5 :]
-                        return Node._parse_expr_list(expr_list)
-                    except Exception:
-                        pass
+                new_expr_list = parse_nonterm_5_elems(expr_list, idx)
+                if new_expr_list is not None:
+                    return Node._parse_expr_list(new_expr_list)
 
             # 6 element expressions.
             if expr_list_len - idx >= 6:
