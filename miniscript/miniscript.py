@@ -1199,7 +1199,7 @@ class Node:
         return self
 
     def construct_or_c(self, child_x, child_z):
-        assert child_x.p.d and child_x.p.u
+        assert child_x.p.has_all("Bdu") and child_z.p.V
         prop_str = ""
         prop_str += "V" if child_x.p.B and child_z.p.V else ""
         prop_str += "z" if child_x.p.z and child_z.p.z else ""
@@ -1390,7 +1390,7 @@ class Node:
         return self
 
     def construct_d(self, child_x):
-        assert child_x.p.z
+        assert child_x.p.has_all("Vz")
         prop_str = "nud"
         prop_str += "B" if child_x.p.V else ""
         prop_str += "o" if child_x.p.z else ""
