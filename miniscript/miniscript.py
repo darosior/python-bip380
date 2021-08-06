@@ -1494,6 +1494,7 @@ class Node:
         return self
 
     def construct_n(self, child_x):
+        assert child_x.p.B
         prop_str = "u"
         prop_str += "B" if child_x.p.B else ""
         prop_str += "z" if child_x.p.z else ""
