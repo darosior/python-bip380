@@ -531,6 +531,35 @@ class Node:
             # 4 element expressions.
             if expr_list_len - idx >= 4:
 
+                # Match against thresh. It's of the form [X] ([X] ADD)* k EQUAL
+                node_a = expr_list[idx]
+                if (
+                    isinstance(node_a, Node)
+                    and node_a.p.has_all("Bdu")
+                ):
+                    subs = [node_a]
+                    # The first matches, now do all the ([X] ADD)s and return
+                    # if a pair is of the form (k, EQUAL).
+                    for i in range(idx + 1, expr_list_len - 1, 2):
+                        if (
+                            isinstance(expr_list[i], Node)
+                            and expr_list[i].p.has_all("Wdu")
+                            and expr_list[i + 1] == OP_ADD
+                        ):
+                            subs.append(expr_list[i])
+                            continue
+                        elif expr_list[i + 1] == OP_EQUAL:
+                            try:
+                                k = stack_item_to_int(expr_list[i])
+                                if len(subs) >= k >= 1:
+                                    node = Node().construct_thresh(k, subs)
+                                    expr_list[idx : i + 1 + 1] = [node]
+                                    return Node()._parse_expr_list(expr_list)
+                            except ScriptNumError:
+                                break
+                        else:
+                            break
+
                 # Match against or_c.
                 if (
                     isinstance(expr_list[idx], Node)
@@ -714,46 +743,6 @@ class Node:
                                 node = Node().construct_multi(k, pk_m)
                                 expr_list = (
                                     expr_list[:idx] + [node] + expr_list[idx + n + 3 :]
-                                )
-                                return Node._parse_expr_list(expr_list)
-                            except Exception:
-                                pass
-
-            # Match against thresh.
-            if expr_list_len - idx >= 7:
-                # Permissible values for n:
-                # (len(list)-1)/2 >= n >= 3:
-                for n in range(3, int((expr_list_len - 1) / 2) + 1):
-                    # Length of k-of-n thresh expression.
-                    thresh_expr_len = 1 + 2 * n
-                    # Match (<expr> <OP_ADD>)*(n-1)
-                    match = True
-                    children = []
-                    for i in range(n - 1):
-                        if (
-                            not isinstance(expr_list[i * 2 + 1], Node)
-                            or expr_list[i * 2 + 2] != OP_ADD
-                        ):
-                            match = False
-                            break
-                        else:
-                            children.append(expr_list[i * 2 + 1])
-                    # Match <expr> ... <k> <OP_EQUAL>
-                    if match is True:
-                        k = Node._coerce_to_int(expr_list[thresh_expr_len - 2])
-                        if (
-                            isinstance(expr_list[idx], Node)
-                            and isinstance(k, int)
-                            and expr_list[thresh_expr_len - 1] == OP_EQUAL
-                        ):
-                            try:
-                                k = expr_list[thresh_expr_len - 2]
-                                children = [expr_list[idx]] + children
-                                node = Node().construct_thresh(k, children)
-                                expr_list = (
-                                    expr_list[:idx]
-                                    + [node]
-                                    + expr_list[idx + thresh_expr_len :]
                                 )
                                 return Node._parse_expr_list(expr_list)
                             except Exception:
