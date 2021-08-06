@@ -1440,7 +1440,7 @@ class Node:
         return self
 
     def construct_j(self, child_x):
-        assert child_x.p.n
+        assert child_x.p.has_all("Bn")
         prop_str = "nd"
         prop_str += "B" if child_x.p.B else ""
         prop_str += "o" if child_x.p.o else ""
@@ -1486,6 +1486,8 @@ class Node:
         return self
 
     def construct_l(self, child_x):
+        assert child_x.p.has_any("BKV")
+
         prop_str = "d"
         prop_str += "B" if child_x.p.B else ""
         prop_str += "o" if child_x.p.z else ""
@@ -1507,6 +1509,8 @@ class Node:
         return self
 
     def construct_u(self, child_x):
+        assert child_x.p.has_any("BKV")
+
         prop_str = "d"
         prop_str += "B" if child_x.p.B else ""
         prop_str += "o" if child_x.p.z else ""
