@@ -1115,8 +1115,8 @@ class Node:
         return self
 
     def construct_and_n(self, child_x, child_y):
-        assert child_x.p.d and child_x.p.u
-        assert (child_x.p.f and child_y.p.f) is False
+        assert child_x.p.has_all("Bdu") and child_y.p.has_any("BKV")
+
         prop_str = "d"
         prop_str += "B" if child_x.p.B and child_y.p.B else ""
         prop_str += "z" if child_x.p.z and child_y.p.z else ""
