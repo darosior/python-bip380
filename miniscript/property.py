@@ -77,3 +77,9 @@ class Property:
             and (not self.z or self.m)
         ):
             raise MiniscriptPropertyError("Conflicting types and properties")
+
+    def type(self):
+        return "".join(filter(lambda x: x in self.types, str(self)))
+
+    def properties(self):
+        return "".join(filter(lambda x: x in self.props, str(self)))
