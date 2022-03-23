@@ -6,7 +6,6 @@
 import hashlib
 
 from enum import Enum
-from itertools import product
 
 from .key import MiniscriptKey
 from .property import Property
@@ -90,22 +89,6 @@ class NodeType(Enum):
 class MiniscriptNodeCreationError(ValueError):
     def __init__(self, message):
         self.message = message
-
-
-class SatType(Enum):
-    # SatType Class provides information on how to construct satisfying or
-    # non-satisfying witnesses. sat/dsat methods return list of tuples:
-    # [(SatType, Value), (SatType, Value), ...]
-    # The value provides a hint how to construct the resp. witness element.
-    OLDER = 0  # Value: Delay
-    AFTER = 1  # Value: Time
-    SIGNATURE = 2  # Value: 33B Key/20B HASH160 Digest
-    KEY_AND_HASH160_PREIMAGE = 3  # Value: 20B HASH160 Digest
-    SHA256_PREIMAGE = 4  # Value: 32B SHA256 Digest
-    HASH256_PREIMAGE = 5  # Value: 32B HASH256 Digest
-    RIPEMD160_PREIMAGE = 6  # Value: 20B RIPEMD160 Digest
-    HASH160_PREIMAGE = 7  # Value: 20B HASH160 Digest
-    DATA = 8  # Value: Bytes
 
 
 def stack_item_to_int(item):
@@ -543,8 +526,7 @@ class Node:
     """Miniscript expression class
 
     Provides methods to instantiate a miniscript node from a string descriptor
-    or script. Node.sat, Node.dsat, Node.sat_ncan and Node.dsat_ncan return a
-    list of tuples which encode the (dis)satisfying witness stack.
+    or script.
     """
 
     def __init__(self):
@@ -553,7 +535,6 @@ class Node:
         self.children = None
         self.t = None
         self.p = None
-        self._sat = None
         self._k = None
         self._pk_k = []
         self._pk_h = []
@@ -677,6 +658,7 @@ class Node:
 
     @property
     def script(self):
+        # TODO: just have a script member that is a CScript
         return CScript(Node._collapse_script(self._script))
 
     @staticmethod
@@ -781,359 +763,6 @@ class Node:
         # No match found.
         raise Exception("Malformed miniscript")
 
-    def _lift_sat(self):
-        # Return satisfying witnesses if terminal node.
-        if not self.children:
-            return self._sat()
-        child_sat_set_ls, child_dsat_set_ls = self._generate_child_sat_dsat()
-        return self._lift_function(self._sat, child_sat_set_ls, child_dsat_set_ls)
-
-    def _lift_dsat(self):
-        # Return non-satisfying witness if terminal node.
-        if not self.children:
-            return self._dsat()
-        child_sat_set_ls, child_dsat_set_ls = self._generate_child_sat_dsat()
-        return self._lift_function(self._dsat, child_sat_set_ls, child_dsat_set_ls)
-
-    def _lift_function(self, function, child_sat_set_ls, child_dsat_set_ls):
-        # Applies (d)sat function on all child_sat_set x child_dsat_set
-        # permutations. Returns list of unique (dis)satisfying witnesses.
-        ret_ls = []
-        for child_sat_set in child_sat_set_ls:
-            for child_dsat_set in child_dsat_set_ls:
-                for ret in function(child_sat_set, child_dsat_set):
-                    if ret not in ret_ls:
-                        # Order (d)sat elements with OLDER/AFTER
-                        # SatType elements at beginning.
-                        ret_older = []
-                        ret_after = []
-                        ret_ordered = []
-                        valid = True
-                        for element in ret:
-                            # Handle None element from children,
-                            # which represents lack of non-cannonical (d)sat.
-                            if element is None:
-                                valid = False
-                                break
-                            else:
-                                if element[0] == SatType.OLDER:
-                                    ret_older.append(element)
-                                elif element[0] == SatType.AFTER:
-                                    ret_after.append(element)
-                                else:
-                                    ret_ordered.append(element)
-                        if valid is True:
-                            ret_ordered = ret_older + ret_after + ret_ordered
-                            # Append ordered (d)sat.
-                            ret_ls.append(ret_ordered)
-        return ret_ls
-
-    def _generate_child_sat_dsat(self):
-        # Create list of lists of unique satisfying witnesses for each child.
-        # [
-        # [satx', satx'', satx'''],
-        # [saty', saty'', saty'''],
-        # [satz', satz'', satz''']
-        # ]
-        child_sat_var_ls = []
-        child_dsat_var_ls = []
-        for child in self.children:
-            child_sat_var_ls.append(child.sat)  # what if multiple are returned?
-            child_dsat_var_ls.append(child.dsat)
-
-        # Generate all permutations of sets each containing a single satisfying
-        # witness element from each child.
-        # [
-        # [satx', saty', satz'],
-        # [satx', saty', satz''],
-        # [satx', saty'', satz''],
-        # [satx'', saty'', satz''],
-        # [satx'', saty'', satz'],
-        # [satx'', saty', satz'], ...
-        # ]
-
-        # List iterators are reusable.
-        child_sat_set_ls = list(product(*child_sat_var_ls))
-        child_dsat_set_ls = list(product(*child_dsat_var_ls))
-        return child_sat_set_ls, child_dsat_set_ls
-
-    @property
-    def sat_ncan(self):
-        """Retrieve non-canonical satisfactions of miniscript object"""
-        if self._sat_ncan == [[None]]:
-            return []
-        else:
-            return self._sat_ncan
-
-    @property
-    def dsat_ncan(self):
-        """Retrieve non-canonical dissatisfactions of miniscript object"""
-        if self._dsat_ncan == [[None]]:
-            return []
-        else:
-            return self._dsat_ncan
-
-    def _lift_sat_ncan(self):
-        if not self.children:
-            return [[None]]
-
-        (
-            child_sat_n_can_set_ls,
-            child_dsat_n_can_set_ls,
-        ) = self._generate_child_sat_dsat_ncan()
-
-        sat_ncan_ls = self._lift_function(
-            self._sat, child_sat_n_can_set_ls, child_dsat_n_can_set_ls
-        )
-        sat_ncan_ls += self._lift_function(
-            self._sat_ncan, child_sat_n_can_set_ls, child_dsat_n_can_set_ls
-        )
-
-        # Check if already in sat_can
-        sat__ncan_ls_ret = []
-        for sat_ncan in sat_ncan_ls:
-            if sat_ncan not in self.sat:
-                sat__ncan_ls_ret.append(sat_ncan)
-        if len(sat__ncan_ls_ret) == 0:
-            return [[None]]
-        else:
-            return sat__ncan_ls_ret
-
-    def _lift_dsat_ncan(self):
-        if not self.children:
-            return [[None]]
-
-        (
-            child_sat_n_can_set_ls,
-            child_dsat_n_can_set_ls,
-        ) = self._generate_child_sat_dsat_ncan()
-
-        dsat_ncan_ls = self._lift_function(
-            self._dsat, child_sat_n_can_set_ls, child_dsat_n_can_set_ls
-        )
-        dsat_ncan_ls += self._lift_function(
-            self._dsat_ncan, child_sat_n_can_set_ls, child_dsat_n_can_set_ls
-        )
-
-        # Check if already in dsat_can
-        dsat__ncan_ls_ret = []
-        for dsat_ncan in dsat_ncan_ls:
-            if dsat_ncan not in self.dsat:
-                dsat__ncan_ls_ret.append(dsat_ncan)
-        if len(dsat__ncan_ls_ret) == 0:
-            return [[None]]
-        else:
-            return dsat__ncan_ls_ret
-
-    def _generate_child_sat_dsat_ncan(self):
-        child_sat_n_can_var_ls = []
-        child_dsat_n_can_var_ls = []
-
-        for child in self.children:
-            child_sat_n_can_var_ls.append(child.sat + child._sat_ncan)
-            child_dsat_n_can_var_ls.append(child.dsat + child._dsat_ncan)
-
-        # List iterators are reusable.
-        child_sat_n_can_set_ls = list(product(*child_sat_n_can_var_ls))
-        child_dsat_n_can_set_ls = list(product(*child_dsat_n_can_var_ls))
-
-        return (child_sat_n_can_set_ls, child_dsat_n_can_set_ls)
-
-    def _construct(self, node_type, node_prop, children, sat, dsat, script, desc):
-        self.t = node_type
-        self.p = node_prop
-        self.children = children
-        self._sat = sat
-        self._dsat = dsat
-        self.sat = self._lift_sat()
-        self.dsat = self._lift_dsat()
-        self._sat_ncan = self._lift_sat_ncan()
-        self._dsat_ncan = self._lift_dsat_ncan()
-        self._script = script
-        self.desc = desc
-
-    # sat/dsat methods for node types with children:
-    # sat must return list of possible satisfying witnesses.
-    # dsat must return (unique) non-satisfying witness if available.
-
-    # child_sat_set: [child_x_sat, child_y_dsat, ...]
-    # dsat child_dsat_set: [child_x_dsat, child_y_dsat, ...]
-
-    def _and_v_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[1] + child_sat_set[0]]
-
-    def _and_v_dsat(self, child_sat_set, child_dsat_set):
-        return [[]]
-
-    def _and_b_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[1] + child_sat_set[0]]
-
-    def _and_b_dsat(self, child_sat_set, child_dsat_set):
-        return [child_dsat_set[1] + child_dsat_set[0]]
-
-    def _and_n_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[1] + child_sat_set[0]]
-
-    def _and_n_dsat(self, child_sat_set, child_dsat_set):
-        return [child_dsat_set[0]]
-
-    def _or_b_sat(self, child_sat_set, child_dsat_set):
-        return [
-            child_dsat_set[1] + child_sat_set[0],
-            child_sat_set[1] + child_dsat_set[0],
-        ]
-
-    def _or_b_dsat(self, child_sat_set, child_dsat_set):
-        return [child_dsat_set[1] + child_dsat_set[0]]
-
-    def _or_d_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0], child_sat_set[1] + child_dsat_set[0]]
-
-    def _or_d_dsat(self, child_sat_set, child_dsat_set):
-        return [child_dsat_set[1] + child_dsat_set[0]]
-
-    def _or_c_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0], child_sat_set[1] + child_dsat_set[0]]
-
-    def _or_c_dsat(self, child_sat_set, child_dsat_set):
-        return [[]]
-
-    def _or_i_sat(self, child_sat_set, child_dsat_set):
-        return [
-            child_sat_set[0] + [(SatType.DATA, b"\x01")],
-            child_sat_set[1] + [(SatType.DATA, b"")],
-        ]
-
-    def _or_i_dsat(self, child_sat_set, child_dsat_set):
-        return [[(SatType.DATA, b"\x01")] + child_dsat_set[1] + [(SatType.DATA, b"")]]
-
-    def _andor_sat(self, child_sat_set, child_dsat_set):
-        return [
-            child_sat_set[1] + child_sat_set[0],
-            child_sat_set[2] + child_dsat_set[0],
-        ]
-
-    def _andor_dsat(self, child_sat_set, child_dsat_set):
-        return [child_dsat_set[2] + child_dsat_set[0]]
-
-    def _a_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0]]
-
-    def _a_dsat(self, child_sat_set, child_dsat_set):
-        return [child_dsat_set[0]]
-
-    def _s_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0]]
-
-    def _s_dsat(self, child_sat_set, child_dsat_set):
-        return [child_dsat_set[0]]
-
-    def _c_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0]]
-
-    def _c_dsat(self, child_sat_set, child_dsat_set):
-        return [child_dsat_set[0]]
-
-    def _t_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0]]
-
-    def _t_dsat(self, child_sat_set, child_dsat_set):
-        return [[]]
-
-    def _d_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0] + [(SatType.DATA, b"\x01")]]
-
-    def _d_dsat(self, child_sat_set, child_dsat_set):
-        return [[(SatType.DATA, b"")]]
-
-    def _v_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0]]
-
-    def _v_dsat(self, child_sat_set, child_dsat_set):
-        return [[]]
-
-    def _j_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0]]
-
-    def _j_dsat(self, child_sat_set, child_dsat_set):
-        return [[(SatType.DATA, b"")]]
-
-    def _n_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0]]
-
-    def _n_dsat(self, child_sat_set, child_dsat_set):
-        return [child_dsat_set[0]]
-
-    def _l_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0] + [(SatType.DATA, b"")]]
-
-    def _l_dsat(self, child_sat_set, child_dsat_set):
-        return [[(SatType.DATA, b"\x01")]]
-
-    def _u_sat(self, child_sat_set, child_dsat_set):
-        return [child_sat_set[0] + [(SatType.DATA, b"\x01")]]
-
-    def _u_dsat(self, child_sat_set, child_dsat_set):
-        return [[(SatType.DATA, b"")]]
-
-    def _thresh_sat(self, child_sat_set, child_dsat_set):
-        thresh_sat_ls = []
-        n = len(self.children)
-        for i in range(2 ** n):
-            if bin(i).count("1") is self._k:
-                sat = []
-                for j in reversed(range(n)):
-                    if ((1 << j) & i) != 0:
-                        sat.extend(child_sat_set[j])
-                    else:
-                        sat.extend(child_dsat_set[j])
-                thresh_sat_ls.append(sat)
-        return thresh_sat_ls
-
-    def _thresh_dsat(self, child_sat_set, child_dsat_set):
-        thres_dsat = []
-        for child_dsat in child_dsat_set:
-            thres_dsat.extend(child_dsat)
-        return [thres_dsat]
-
-    def _sat_ncan(self, child_sat_set, child_dsat_set):
-        if self.t is NodeType.OR_B:
-            return [child_sat_set[1] + child_sat_set[0]]
-        else:
-            return [[None]]
-
-    def _dsat_ncan(self, child_sat_set, child_dsat_set):
-        if self.t is NodeType.ANDOR:
-            return [child_dsat_set[1] + child_sat_set[0]]
-        elif self.t is NodeType.AND_V:
-            return [child_dsat_set[1] + child_sat_set[0]]
-        elif self.t is NodeType.AND_B:
-            return [
-                child_sat_set[1] + child_dsat_set[0],
-                child_dsat_set[1] + child_sat_set[0],
-            ]
-        elif self.t is NodeType.THRESH:
-            thresh_dsat_ls = []
-            n = len(self.children)
-            for i in range(2 ** n):
-                if bin(i).count("1") != self._k and bin(i).count("1") != 0:
-                    sat = []
-                    for j in reversed(range(n)):
-                        if ((1 << j) & i) != 0:
-                            sat.extend(child_sat_set[j])
-                        else:
-                            sat.extend(child_dsat_set[j])
-                    thresh_dsat_ls.append(sat)
-            return thresh_dsat_ls
-        elif self.t is NodeType.WRAP_J:
-            return (
-                [[None]]
-                if child_dsat_set[0] is [(SatType.DATA, b"")]
-                else [child_dsat_set[0]]
-            )
-        else:
-            return [[None]]
-
     @staticmethod
     def _parse_child_strings(child_exprs):
         child_nodes = []
@@ -1218,10 +847,6 @@ class Just0(Node):
         self.t = NodeType.JUST_0
         self.p = Property("Bzudems")
         self._script = [OP_0]
-        self.sat = [[]]
-        self.dsat = [[]]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         return "0"
@@ -1234,10 +859,6 @@ class Just1(Node):
         self.t = NodeType.JUST_1
         self.p = Property("Bzufm")
         self._script = [OP_1]
-        self.sat = [[]]
-        self.dsat = [[]]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         return "1"
@@ -1257,11 +878,6 @@ class PkNode(Node):
         self.t = NodeType.PK_K
         self.p = Property("Konudems")
         self._script = [self.pubkey.bytes()]
-        # FIXME: seems like the SIGNATURE should be in c:, not there
-        self.sat = [[(SatType.SIGNATURE, self.pubkey)]]
-        self.dsat = [[(SatType.DATA, b"")]]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         return f"pk_k({self.pubkey.bytes().hex()})"
@@ -1290,18 +906,6 @@ class PkhNode(Node):
         self.t = NodeType.PK_H
         self.p = Property("Knudems")
         self._script = [OP_DUP, OP_HASH160, self.pk_hash(), OP_EQUALVERIFY]
-        # FIXME: seems like the SIGNATURE should be in c:, not there
-        self.sat = [
-            [
-                (SatType.SIGNATURE, self._pk_h),
-                (SatType.KEY_AND_HASH160_PREIMAGE, self._pk_h),
-            ]
-        ]
-        self.dsat = [
-            [(SatType.DATA, b""), (SatType.KEY_AND_HASH160_PREIMAGE, self._pk_h)]
-        ]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         if isinstance(self.pk_or_pkh, MiniscriptKey):
@@ -1329,10 +933,6 @@ class Older(Node):
         self.t = NodeType.OLDER
         self.p = Property("Bzmf")
         self._script = [self.value, OP_CHECKSEQUENCEVERIFY]
-        self.sat = [[(SatType.OLDER, self.value)]]
-        self.dsat = [[]]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         return f"older({self.value})"
@@ -1346,10 +946,6 @@ class After(Node):
         self.t = NodeType.AFTER
         self.p = Property("Bzmf")
         self._script = [self.value, OP_CHECKLOCKTIMEVERIFY]
-        self.sat = [[(SatType.AFTER, self.value)]]
-        self.dsat = [[]]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         return f"after({self.value})"
@@ -1363,10 +959,6 @@ class Sha256(Node):
         self.t = NodeType.SHA256
         self.p = Property("Bonudm")
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_SHA256, digest, OP_EQUAL]
-        self.sat = [[(SatType.SHA256_PREIMAGE, self.digest)]]
-        self.dsat = [[(SatType.DATA, bytes(32))]]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         return f"sha256({self.digest.hex()})"
@@ -1380,10 +972,6 @@ class Hash256(Node):
         self.t = NodeType.HASH256
         self.p = Property("Bonudm")
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH256, digest, OP_EQUAL]
-        self.sat = [[(SatType.HASH256_PREIMAGE, self.digest)]]
-        self.dsat = [[(SatType.DATA, bytes(32))]]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         return f"hash256({self.digest.hex()})"
@@ -1397,10 +985,6 @@ class Ripemd160(Node):
         self.t = NodeType.RIPEMD160
         self.p = Property("Bonudm")
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, digest, OP_EQUAL]
-        self.sat = [[(SatType.RIPEMD160_PREIMAGE, self.digest)]]
-        self.dsat = [[(SatType.DATA, bytes(32))]]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         return f"ripemd160({self.digest.hex()})"
@@ -1414,10 +998,6 @@ class Hash160(Node):
         self.t = NodeType.HASH160
         self.p = Property("Bonudm")
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH160, digest, OP_EQUAL]
-        self.sat = [[(SatType.HASH160_PREIMAGE, self.digest)]]
-        self.dsat = [[(SatType.DATA, bytes(32))]]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         return f"hash160({self.digest.hex()})"
@@ -1432,11 +1012,6 @@ class Multi(Node):
         self.keys = keys
         self.p = Property("Bndu")
         self._script = [k, *[k.bytes() for k in keys], len(keys), OP_CHECKMULTISIG]
-        # FIXME: implement satisfier directly
-        self.sat = [[]]
-        self.dsat = [[(SatType.DATA, bytes(0))] * (k + 1)]
-        self._sat_ncan = [[None]]
-        self._dsat_ncan = [[None]]
 
     def __repr__(self):
         return f"multi({','.join([self.k] + self.keys)})"
