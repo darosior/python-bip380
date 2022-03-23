@@ -49,14 +49,14 @@ def test_simple_sanity_checks():
     )
     assert aliased.script == not_aliased.script
 
-    assert roundtrip("older(1)")._delay == 1
-    assert roundtrip("older(255)")._delay == 255
-    assert roundtrip("older(16407)")._delay == 16407
-    assert roundtrip("older(1621038656)")._delay == 1621038656
-    assert roundtrip("after(1)")._time == 1
-    assert roundtrip("after(255)")._time == 255
-    assert roundtrip("after(16407)")._time == 16407
-    assert roundtrip("after(1621038656)")._time == 1621038656
+    assert roundtrip("older(1)").value == 1
+    assert roundtrip("older(255)").value == 255
+    assert roundtrip("older(16407)").value == 16407
+    assert roundtrip("older(1621038656)").value == 1621038656
+    assert roundtrip("after(1)").value == 1
+    assert roundtrip("after(255)").value == 255
+    assert roundtrip("after(16407)").value == 16407
+    assert roundtrip("after(1621038656)").value == 1621038656
     # CSV with a negative value
     with pytest.raises(Exception):
         Node.from_script(b"\x86\x92\xB2")

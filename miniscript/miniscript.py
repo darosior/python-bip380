@@ -13,6 +13,8 @@ from .property import Property
 from .script import (
     CScript,
     CScriptOp,
+    OP_1,
+    OP_0,
     OP_ADD,
     OP_BOOLAND,
     OP_BOOLOR,
@@ -51,6 +53,7 @@ def hash160(data):
     return hashlib.new("ripemd160", sha2).digest()
 
 
+# TODO: rename to Fragment
 class NodeType(Enum):
     JUST_0 = 0
     JUST_1 = 1
@@ -82,6 +85,11 @@ class NodeType(Enum):
     ANDOR = 27
     THRESH = 28
     MULTI = 29
+
+
+class MiniscriptNodeCreationError(ValueError):
+    def __init__(self, message):
+        self.message = message
 
 
 class SatType(Enum):
@@ -131,14 +139,13 @@ def parse_term_single_elem(expr_list, idx):
         and len(expr_list[idx]) == 33
         and expr_list[idx][0] in [2, 3]
     ):
-        key = MiniscriptKey(expr_list[idx])
-        expr_list[idx] = Node().construct_pk_k(key)
+        expr_list[idx] = PkNode(expr_list[idx])
 
     # Match against JUST_1 and JUST_0.
     if expr_list[idx] == 1:
-        expr_list[idx] = Node().construct_just_1()
+        expr_list[idx] = Just1()
     if expr_list[idx] == 0:
-        expr_list[idx] = Node().construct_just_0()
+        expr_list[idx] = Just0()
 
 
 # TODO: these parse_term functions don't need to return the expr_list
@@ -165,12 +172,12 @@ def parse_term_2_elems(expr_list, idx):
         return
 
     if elem_b == OP_CHECKSEQUENCEVERIFY:
-        node = Node().construct_older(n)
+        node = Older(n)
         expr_list[idx : idx + 2] = [node]
         return expr_list
 
     if elem_b == OP_CHECKLOCKTIMEVERIFY:
-        node = Node().construct_after(n)
+        node = After(n)
         expr_list[idx : idx + 2] = [node]
         return expr_list
 
@@ -193,7 +200,7 @@ def parse_term_5_elems(expr_list, idx):
     if expr_list[idx + 3 : idx + 5] != [OP_EQUAL, OP_VERIFY]:
         return
 
-    node = Node().construct_pk_h(expr_list[idx + 2])
+    node = PkhNode(expr_list[idx + 2])
     expr_list[idx : idx + 5] = [node]
     return expr_list
 
@@ -212,7 +219,7 @@ def parse_term_7_elems(expr_list, idx):
         and len(expr_list[idx + 5]) == 32
         and expr_list[idx + 6] == OP_EQUAL
     ):
-        node = Node().construct_sha256(expr_list[idx + 5])
+        node = Sha256(expr_list[idx + 5])
         expr_list[idx : idx + 7] = [node]
         return expr_list
 
@@ -223,7 +230,7 @@ def parse_term_7_elems(expr_list, idx):
         and len(expr_list[idx + 5]) == 32
         and expr_list[idx + 6] == OP_EQUAL
     ):
-        node = Node().construct_hash256(expr_list[idx + 5])
+        node = Hash256(expr_list[idx + 5])
         expr_list[idx : idx + 7] = [node]
         return expr_list
 
@@ -234,7 +241,7 @@ def parse_term_7_elems(expr_list, idx):
         and len(expr_list[idx + 5]) == 20
         and expr_list[idx + 6] == OP_EQUAL
     ):
-        node = Node().construct_ripemd160(expr_list[idx + 5])
+        node = Ripemd160(expr_list[idx + 5])
         expr_list[idx : idx + 7] = [node]
         return expr_list
 
@@ -245,7 +252,7 @@ def parse_term_7_elems(expr_list, idx):
         and len(expr_list[idx + 5]) == 20
         and expr_list[idx + 6] == OP_EQUAL
     ):
-        node = Node().construct_hash160(expr_list[idx + 5])
+        node = Hash160(expr_list[idx + 5])
         expr_list[idx : idx + 7] = [node]
         return expr_list
 
@@ -264,33 +271,33 @@ def parse_nonterm_2_elems(expr_list, idx):
         if isinstance(elem_b, Node) and elem_a.p.V and elem_b.p.has_any("BKV"):
             # Is it a special case of t: wrapper?
             if elem_b.t == NodeType.JUST_1:
-                node = Node().construct_t(elem_a)
+                node = WrapT(elem_a)
             else:
-                node = Node().construct_and_v(elem_a, elem_b)
+                node = AndV(elem_a, elem_b)
             expr_list[idx : idx + 2] = [node]
             return expr_list
 
         # Match against c wrapper.
         if elem_b == OP_CHECKSIG and elem_a.p.K:
-            node = Node().construct_c(elem_a)
+            node = WrapC(elem_a)
             expr_list[idx : idx + 2] = [node]
             return expr_list
 
         # Match against v wrapper.
         if elem_b == OP_VERIFY and elem_a.p.B:
-            node = Node().construct_v(elem_a)
+            node = WrapV(elem_a)
             expr_list[idx : idx + 2] = [node]
             return expr_list
 
         # Match against n wrapper.
         if elem_b == OP_0NOTEQUAL and elem_a.p.B:
-            node = Node().construct_n(elem_a)
+            node = WrapN(elem_a)
             expr_list[idx : idx + 2] = [node]
             return expr_list
 
     # Match against s wrapper.
     if isinstance(elem_b, Node) and elem_a == OP_SWAP and elem_b.p.has_all("Bo"):
-        node = Node().construct_s(elem_b)
+        node = WrapS(elem_b)
         expr_list[idx : idx + 2] = [node]
         return expr_list
 
@@ -308,13 +315,13 @@ def parse_nonterm_3_elems(expr_list, idx):
     if isinstance(elem_a, Node) and isinstance(elem_b, Node):
         # Match against and_b.
         if elem_c == OP_BOOLAND and elem_a.p.B and elem_b.p.W:
-            node = Node().construct_and_b(elem_a, elem_b)
+            node = AndB(elem_a, elem_b)
             expr_list[idx : idx + 3] = [node]
             return expr_list
 
         # Match against or_b.
         if elem_c == OP_BOOLOR and elem_a.p.has_all("Bd") and elem_b.p.has_all("Wd"):
-            node = Node().construct_or_b(elem_a, elem_b)
+            node = OrB(elem_a, elem_b)
             expr_list[idx : idx + 3] = [node]
             return expr_list
 
@@ -325,7 +332,7 @@ def parse_nonterm_3_elems(expr_list, idx):
         and elem_b.p.B
         and elem_c == OP_FROMALTSTACK
     ):
-        node = Node().construct_a(elem_b)
+        node = WrapA(elem_b)
         expr_list[idx : idx + 3] = [node]
         return expr_list
 
@@ -343,9 +350,9 @@ def parse_nonterm_3_elems(expr_list, idx):
     keys = []
     i = idx + 1
     while idx < len(expr_list) - 2:
-        if not isinstance(expr_list[i], Node) or expr_list[i].t != NodeType.PK_K:
+        if not isinstance(expr_list[i], PkNode):
             break
-        keys.append(MiniscriptKey(expr_list[i]._pk_k[0]))
+        keys.append(expr_list[i].pubkey)
         i += 1
     if expr_list[i + 1] == OP_CHECKMULTISIG:
         if k > len(keys):
@@ -356,7 +363,7 @@ def parse_nonterm_3_elems(expr_list, idx):
             return
         if m is None or m != len(keys):
             return
-        node = Node().construct_multi(k, keys)
+        node = Multi(k, keys)
         expr_list[idx : i + 2] = [node]
         return expr_list
 
@@ -386,7 +393,7 @@ def parse_nonterm_4_elems(expr_list, idx):
                 try:
                     k = stack_item_to_int(expr_list[i])
                     if len(subs) >= k >= 1:
-                        node = Node().construct_thresh(k, subs)
+                        node = Thresh(k, subs)
                         expr_list[idx : i + 1 + 1] = [node]
                         return expr_list
                 except ScriptNumError:
@@ -403,7 +410,7 @@ def parse_nonterm_4_elems(expr_list, idx):
         and it_c.p.V
         and it_d == OP_ENDIF
     ):
-        node = Node().construct_or_c(it_a, it_c)
+        node = OrC(it_a, it_c)
         expr_list[idx : idx + 4] = [node]
         return expr_list
 
@@ -414,7 +421,7 @@ def parse_nonterm_4_elems(expr_list, idx):
         and it_c.p.has_all("Vz")
         and it_d == OP_ENDIF
     ):
-        node = Node().construct_d(it_c)
+        node = WrapD(it_c)
         expr_list[idx : idx + 4] = [node]
         return expr_list
 
@@ -436,7 +443,7 @@ def parse_nonterm_5_elems(expr_list, idx):
         and it_d.p.B
         and it_e == OP_ENDIF
     ):
-        node = Node().construct_or_d(it_a, it_d)
+        node = OrD(it_a, it_d)
         expr_list[idx : idx + 5] = [node]
         return expr_list
 
@@ -450,7 +457,7 @@ def parse_nonterm_5_elems(expr_list, idx):
         and it_d.p.has_any("BKV")
         and it_e == OP_ENDIF
     ):
-        node = Node().construct_or_i(it_b, it_d)
+        node = OrI(it_b, it_d)
         expr_list[idx : idx + 5] = [node]
         return expr_list
 
@@ -460,7 +467,7 @@ def parse_nonterm_5_elems(expr_list, idx):
         and isinstance(it_d, Node)
         and it_e == OP_ENDIF
     ):
-        node = Node().construct_j(expr_list[idx + 3])
+        node = WrapJ(expr_list[idx + 3])
         expr_list[idx : idx + 5] = [node]
         return expr_list
 
@@ -474,7 +481,7 @@ def parse_nonterm_5_elems(expr_list, idx):
         and it_d.p.has_any("BKV")
         and it_e == OP_ENDIF
     ):
-        node = Node().construct_l(it_d)
+        node = WrapL(it_d)
         expr_list[idx : idx + 5] = [node]
         return expr_list
 
@@ -485,7 +492,7 @@ def parse_nonterm_5_elems(expr_list, idx):
         and it_b.p.has_any("BKV")
         and [it_c, it_d, it_e] == [OP_ELSE, 0, OP_ENDIF]
     ):
-        node = Node().construct_u(it_b)
+        node = WrapU(it_b)
         expr_list[idx : idx + 5] = [node]
         return expr_list
 
@@ -498,6 +505,7 @@ def parse_nonterm_6_elems(expr_list, idx):
     """
     (it_a, it_b, it_c, it_d, it_e, it_f) = expr_list[idx : idx + 6]
 
+    # TODO: merge the two branches
     # Match against and_n.
     if (
         isinstance(it_a, Node)
@@ -510,7 +518,7 @@ def parse_nonterm_6_elems(expr_list, idx):
         and it_e.p.has_any("BKV")
         and it_f == OP_ENDIF
     ):
-        node = Node().construct_and_n(it_a, it_e)
+        node = AndN(it_a, it_e)
         expr_list[idx : idx + 6] = [node]
         return expr_list
 
@@ -526,7 +534,7 @@ def parse_nonterm_6_elems(expr_list, idx):
         and it_e.p.has_any("BKV")
         and it_f == OP_ENDIF
     ):
-        node = Node().construct_andor(it_a, it_e, it_c)
+        node = AndOr(it_a, it_e, it_c)
         expr_list[idx : idx + 6] = [node]
         return expr_list
 
@@ -544,6 +552,7 @@ class Node:
         self.desc = ""
         self.children = None
         self.t = None
+        self.p = None
         self._sat = None
         self._k = None
         self._pk_k = []
@@ -560,39 +569,43 @@ class Node:
         k = None
 
         if tag == "0":
-            return Node().construct_just_0()
+            return Just0()
 
         if tag == "1":
-            return Node().construct_just_1()
+            return Just1()
 
         if tag == "pk":
-            key_obj = MiniscriptKey(child_exprs[0])
-            return Node().construct_c(Node().construct_pk_k(key_obj))
+            return WrapC(PkNode(child_exprs[0]))
 
         if tag == "pk_k":
-            key_obj = MiniscriptKey(child_exprs[0])
-            return Node().construct_pk_k(key_obj)
+            return PkNode(child_exprs[0])
 
         if tag == "pkh":
             keyhash = bytes.fromhex(child_exprs[0])
-            return Node().construct_c(Node().construct_pk_h(keyhash))
+            return WrapC(PkhNode(keyhash))
 
         if tag == "pk_h":
             keyhash_b = bytes.fromhex(child_exprs[0])
-            return Node().construct_pk_h(keyhash_b)
+            return PkhNode(keyhash_b)
 
         if tag == "older":
             n = int(child_exprs[0])
-            return Node().construct_older(n)
+            return Older(n)
 
         if tag == "after":
             # FIXME: rename
             time = int(child_exprs[0])
-            return Node().construct_after(time)
+            return After(time)
 
         if tag in ["sha256", "hash256", "ripemd160", "hash160"]:
-            hash_b = bytes.fromhex(child_exprs[0])
-            return getattr(Node(), "construct_" + tag)(hash_b)
+            digest = bytes.fromhex(child_exprs[0])
+            if tag == "sha256":
+                return Sha256(digest)
+            if tag == "hash256":
+                return Hash256(digest)
+            if tag == "ripemd160":
+                return Ripemd160(digest)
+            return Hash160(digest)
 
         if tag == "multi":
             k = int(child_exprs.pop(0))
@@ -600,17 +613,67 @@ class Node:
             for child_expr in child_exprs:
                 key_obj = MiniscriptKey(child_expr)
                 key_n.append(key_obj)
-            return Node().construct_multi(k, key_n)
+            return Multi(k, key_n)
+
+        if tag == "and_v":
+            return AndV(*Node._parse_child_strings(child_exprs))
+
+        if tag == "and_b":
+            return AndB(*Node._parse_child_strings(child_exprs))
+
+        if tag == "and_n":
+            return AndN(*Node._parse_child_strings(child_exprs))
+
+        if tag == "or_b":
+            return OrB(*Node._parse_child_strings(child_exprs))
+
+        if tag == "or_c":
+            return OrC(*Node._parse_child_strings(child_exprs))
+
+        if tag == "or_d":
+            return OrD(*Node._parse_child_strings(child_exprs))
+
+        if tag == "or_i":
+            return OrI(*Node._parse_child_strings(child_exprs))
+
+        if tag == "andor":
+            return AndOr(*Node._parse_child_strings(child_exprs))
 
         if tag == "thresh":
             k = int(child_exprs.pop(0))
-            return Node().construct_thresh(k, Node._parse_child_strings(child_exprs))
+            return Thresh(k, Node._parse_child_strings(child_exprs))
 
-        # Standard node constructor forms:
-        # construct_tag(node_x, node_y, ...):
-        return getattr(Node(), "construct_" + tag)(
-            *Node._parse_child_strings(child_exprs)
-        )
+        if tag == "a":
+            return WrapA(*Node._parse_child_strings(child_exprs))
+
+        if tag == "s":
+            return WrapS(*Node._parse_child_strings(child_exprs))
+
+        if tag == "c":
+            return WrapC(*Node._parse_child_strings(child_exprs))
+
+        if tag == "t":
+            return WrapT(*Node._parse_child_strings(child_exprs))
+
+        if tag == "d":
+            return WrapD(*Node._parse_child_strings(child_exprs))
+
+        if tag == "v":
+            return WrapV(*Node._parse_child_strings(child_exprs))
+
+        if tag == "j":
+            return WrapJ(*Node._parse_child_strings(child_exprs))
+
+        if tag == "n":
+            return WrapN(*Node._parse_child_strings(child_exprs))
+
+        if tag == "l":
+            return WrapL(*Node._parse_child_strings(child_exprs))
+
+        if tag == "u":
+            return WrapU(*Node._parse_child_strings(child_exprs))
+
+        assert False  # TODO
 
     @property
     def script(self):
@@ -876,709 +939,6 @@ class Node:
 
         return (child_sat_n_can_set_ls, child_dsat_n_can_set_ls)
 
-    def construct_just_1(self):
-        self._construct(
-            NodeType.JUST_1,
-            Property("Bzufm"),
-            [],
-            self._just_1_sat,
-            self._just_1_dsat,
-            [1],
-            "1",
-        )
-        return self
-
-    def construct_just_0(self):
-        self._construct(
-            NodeType.JUST_0,
-            Property("Bzudems"),
-            [],
-            self._just_0_sat,
-            self._just_0_dsat,
-            [0],
-            "0",
-        )
-        return self
-
-    def construct_pk_k(self, pubkey):
-        self._pk_k = [pubkey.bytes()]
-        self._construct(
-            NodeType.PK_K,
-            Property("Konudems"),
-            [],
-            self._pk_k_sat,
-            self._pk_k_dsat,
-            [pubkey.bytes()],
-            "pk_k(" + self._pk_k[0].hex() + ")",
-        )
-        return self
-
-    def construct_pk_h(self, pk_or_pkhash):
-        """Can be either a key or a keyhash, for now."""
-        assert isinstance(pk_or_pkhash, bytes) and len(pk_or_pkhash) in [20, 33]
-        if len(pk_or_pkhash) == 20:
-            h = pk_or_pkhash
-        else:
-            self._pk_k = pk_or_pkhash
-            h = hash160(pk_or_pkhash)
-        self._pk_h = h
-        self._construct(
-            NodeType.PK_H,
-            Property("Knudems"),
-            [],
-            self._pk_h_sat,
-            self._pk_h_dsat,
-            [OP_DUP, OP_HASH160, h, OP_EQUALVERIFY],
-            "pk_h(" + h.hex() + ")",
-        )
-        return self
-
-    def construct_older(self, delay):
-        assert delay > 0 and delay < 2 ** 31
-        self._delay = delay
-        self._construct(
-            NodeType.OLDER,
-            Property("Bzfm"),
-            [],
-            self._older_sat,
-            self._older_dsat,
-            [delay, OP_CHECKSEQUENCEVERIFY],
-            "older(" + str(delay) + ")",
-        )
-        return self
-
-    def construct_after(self, time):
-        assert time >= 1 and time < 2 ** 31
-        # FIXME: rename this, 'time' is confusing
-        self._time = time
-        self._construct(
-            NodeType.AFTER,
-            Property("Bzfm"),
-            [],
-            self._after_sat,
-            self._after_dsat,
-            [time, OP_CHECKLOCKTIMEVERIFY],
-            "after(" + str(time) + ")",
-        )
-        return self
-
-    def construct_sha256(self, hash_digest):
-        assert isinstance(hash_digest, bytes) and len(hash_digest) == 32
-        self._sha256 = hash_digest
-        self._construct(
-            NodeType.SHA256,
-            Property("Bonudm"),
-            [],
-            self._sha256_sat,
-            self._sha256_dsat,
-            [OP_SIZE, 32, OP_EQUALVERIFY, OP_SHA256, hash_digest, OP_EQUAL],
-            "sha256(" + hash_digest.hex() + ")",
-        )
-        return self
-
-    def construct_hash256(self, hash_digest):
-        assert isinstance(hash_digest, bytes) and len(hash_digest) == 32
-        self._hash256 = hash_digest
-        self._construct(
-            NodeType.HASH256,
-            Property("Bonudm"),
-            [],
-            self._hash256_sat,
-            self._hash256_dsat,
-            [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH256, hash_digest, OP_EQUAL],
-            "hash256(" + hash_digest.hex() + ")",
-        )
-        return self
-
-    def construct_ripemd160(self, hash_digest):
-        assert isinstance(hash_digest, bytes) and len(hash_digest) == 20
-        self._ripemd160 = hash_digest
-        self._construct(
-            NodeType.RIPEMD160,
-            Property("Bonudm"),
-            [],
-            self._ripemd160_sat,
-            self._ripemd160_dsat,
-            [OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, hash_digest, OP_EQUAL],
-            "ripemd160(" + hash_digest.hex() + ")",
-        )
-        return self
-
-    def construct_hash160(self, hash_digest):
-        assert isinstance(hash_digest, bytes) and len(hash_digest) == 20
-        self._hash160 = hash_digest
-        self._construct(
-            NodeType.HASH160,
-            Property("Bonudm"),
-            [],
-            self._hash160_sat,
-            self._hash160_dsat,
-            [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH160, hash_digest, OP_EQUAL],
-            "hash160(" + hash_digest.hex() + ")",
-        )
-        return self
-
-    def construct_multi(self, k, keys_n):
-        self._k = k
-        n = len(keys_n)
-        assert n >= k >= 1
-        prop_str = "Bnudems"
-        self._pk_n = [key.bytes() for key in keys_n]
-        desc = "multi(" + str(k) + ","
-        for idx, key_b in enumerate(self._pk_n):
-            desc += key_b.hex()
-            desc += "," if idx != (n - 1) else ")"
-        self._construct(
-            NodeType.MULTI,
-            Property(prop_str),
-            [],
-            self._multi_sat,
-            self._multi_dsat,
-            [k, *self._pk_n, n, OP_CHECKMULTISIG],
-            desc,
-        )
-        return self
-
-    def construct_and_v(self, child_x, child_y):
-        assert child_x.p.V
-        assert child_y.p.has_any("BKV")
-
-        prop_str = ""
-        prop_str += "B" if child_x.p.V and child_y.p.B else ""
-        prop_str += "K" if child_x.p.V and child_y.p.K else ""
-        prop_str += "V" if child_x.p.V and child_y.p.V else ""
-        prop_str += "u" if child_y.p.u else ""
-        prop_str += "n" if child_x.p.n or (child_x.p.z and child_y.p.n) else ""
-        prop_str += "z" if child_x.p.z and child_y.p.z else ""
-        prop_str += (
-            "o"
-            if (child_x.p.z and child_y.p.o) or (child_x.p.o and child_y.p.z)
-            else ""
-        )
-        prop_str += "f" if child_x.p.s or child_y.p.f else ""
-        prop_str += "m" if child_x.p.m and child_y.p.m else ""
-        prop_str += "s" if child_x.p.s or child_y.p.s else ""
-        self._construct(
-            NodeType.AND_V,
-            Property(prop_str),
-            [child_x, child_y],
-            self._and_v_sat,
-            self._and_v_dsat,
-            child_x._script + child_y._script,
-            "and_v(" + child_x.desc + "," + child_y.desc + ")",
-        )
-        return self
-
-    def construct_and_b(self, child_x, child_y):
-        assert child_x.p.B and child_y.p.W
-
-        prop_str = "u"
-        prop_str += "B" if child_x.p.B and child_y.p.W else ""
-        prop_str += "z" if child_x.p.z and child_y.p.z else ""
-        prop_str += (
-            "o"
-            if (child_x.p.z and child_y.p.o) or (child_x.p.o and child_y.p.z)
-            else ""
-        )
-        prop_str += "n" if child_x.p.n or (child_x.p.z and child_y.p.n) else ""
-        prop_str += "d" if child_x.p.d and child_y.p.d else ""
-        prop_str += (
-            "f"
-            if (child_x.p.f and child_y.p.f)
-            or (child_x.p.s and child_x.p.f)
-            or (child_y.p.s and child_y.p.f)
-            else ""
-        )
-        prop_str += (
-            "e" if child_x.p.e and child_y.p.e and child_x.p.s and child_y.p.s else ""
-        )
-        prop_str += "m" if child_x.p.m and child_y.p.m else ""
-        prop_str += "s" if child_x.p.s or child_y.p.s else ""
-        self._construct(
-            NodeType.AND_B,
-            Property(prop_str),
-            [child_x, child_y],
-            self._and_b_sat,
-            self._and_b_dsat,
-            child_x._script + child_y._script + [OP_BOOLAND],
-            "and_b(" + child_x.desc + "," + child_y.desc + ")",
-        )
-        return self
-
-    def construct_and_n(self, child_x, child_y):
-        assert child_x.p.has_all("Bdu") and child_y.p.has_any("BKV")
-
-        prop_str = "d"
-        prop_str += "B" if child_x.p.B and child_y.p.B else ""
-        prop_str += "z" if child_x.p.z and child_y.p.z else ""
-        prop_str += "o" if child_x.p.o and child_y.p.z else ""
-        prop_str += "u" if child_y.p.u else ""
-        prop_str += "e" if child_x.p.e and (child_x.p.s or child_y.p.f) else ""
-        prop_str += "m" if child_x.p.m and child_y.p.m and child_x.p.e else ""
-        prop_str += "s" if child_x.p.s or child_y.p.s else ""
-        self._construct(
-            NodeType.AND_N,
-            Property(prop_str),
-            [child_x, child_y],
-            self._and_n_sat,
-            self._and_n_dsat,
-            child_x._script + [OP_NOTIF, 0, OP_ELSE] + child_y._script + [OP_ENDIF],
-            "and_n(" + child_x.desc + "," + child_y.desc + ")",
-        )
-        return self
-
-    def construct_or_b(self, child_x, child_z):
-        assert child_x.p.has_all("Bd")
-        assert child_z.p.has_all("Wd")
-
-        prop_str = "du"
-        prop_str += "B" if child_x.p.B and child_z.p.W else ""
-        prop_str += "z" if child_x.p.z and child_z.p.z else ""
-        prop_str += (
-            "o"
-            if (child_x.p.z and child_z.p.o) or (child_x.p.o and child_z.p.z)
-            else ""
-        )
-        prop_str += "e" if child_x.p.e and child_z.p.e else ""
-        prop_str += (
-            "m"
-            if child_x.p.m
-            and child_z.p.m
-            and child_x.p.e
-            and child_z.p.e
-            and (child_x.p.s or child_z.p.s)
-            else ""
-        )
-        prop_str += "s" if child_x.p.s and child_z.p.s else ""
-        self._construct(
-            NodeType.OR_B,
-            Property(prop_str),
-            [child_x, child_z],
-            self._or_b_sat,
-            self._or_b_dsat,
-            child_x._script + child_z._script + [OP_BOOLOR],
-            "or_b(" + child_x.desc + "," + child_z.desc + ")",
-        )
-        return self
-
-    def construct_or_d(self, child_x, child_z):
-        assert child_x.p.has_all("Bdu")
-        assert child_z.p.B
-
-        prop_str = ""
-        prop_str += "B" if child_x.p.B and child_z.p.B else ""
-        prop_str += "z" if child_x.p.z and child_z.p.z else ""
-        prop_str += "o" if child_x.p.o and child_z.p.z else ""
-        prop_str += "u" if child_x.p.u and (child_x.p.f or child_z.p.u) else ""
-        prop_str += "d" if child_x.p.d and child_z.p.d else ""
-        prop_str += "f" if child_x.p.f or child_z.p.f else ""
-        prop_str += "e" if child_x.p.e and child_z.p.e else ""
-        prop_str += (
-            "m"
-            if child_x.p.m
-            and child_z.p.m
-            and child_x.p.e
-            and (child_x.p.s or child_z.p.s)
-            else ""
-        )
-        prop_str += "s" if child_x.p.s and child_z.p.s else ""
-        self._construct(
-            NodeType.OR_D,
-            Property(prop_str),
-            [child_x, child_z],
-            self._or_d_sat,
-            self._or_d_dsat,
-            child_x._script + [OP_IFDUP, OP_NOTIF] + child_z._script + [OP_ENDIF],
-            "or_d(" + child_x.desc + "," + child_z.desc + ")",
-        )
-        return self
-
-    def construct_or_c(self, child_x, child_z):
-        assert child_x.p.has_all("Bdu") and child_z.p.V
-        prop_str = ""
-        prop_str += "V" if child_x.p.B and child_z.p.V else ""
-        prop_str += "z" if child_x.p.z and child_z.p.z else ""
-        prop_str += "o" if child_x.p.o and child_z.p.z else ""
-        prop_str += "f" if child_x.p.f or child_z.p.f else ""
-        prop_str += (
-            "m"
-            if child_x.p.m
-            and child_z.p.m
-            and child_x.p.e
-            and (child_x.p.s or child_z.p.s)
-            else ""
-        )
-        prop_str += "s" if child_x.p.s and child_z.p.s else ""
-        self._construct(
-            NodeType.OR_C,
-            Property(prop_str),
-            [child_x, child_z],
-            self._or_c_sat,
-            self._or_c_dsat,
-            child_x._script + [OP_NOTIF] + child_z._script + [OP_ENDIF],
-            "or_c(" + child_x.desc + "," + child_z.desc + ")",
-        )
-        return self
-
-    def construct_or_i(self, child_x, child_z):
-        for child in child_x, child_z:
-            assert child.p.has_any("BKV")
-
-        prop_str = ""
-        prop_str += "B" if child_x.p.B and child_z.p.B else ""
-        prop_str += "K" if child_x.p.K and child_z.p.K else ""
-        prop_str += "V" if child_x.p.V and child_z.p.V else ""
-        prop_str += "u" if child_x.p.u and child_z.p.u else ""
-        prop_str += "d" if child_x.p.d or child_z.p.d else ""
-        prop_str += "o" if child_x.p.z and child_z.p.z else ""
-        prop_str += (
-            "e"
-            if (child_x.p.e and child_z.p.f) or (child_x.p.f and child_z.p.e)
-            else ""
-        )
-        prop_str += "f" if child_x.p.f and child_z.p.f else ""
-        prop_str += (
-            "m" if child_x.p.m and child_z.p.m and (child_x.p.s or child_z.p.s) else ""
-        )
-        prop_str += "s" if child_x.p.s and child_z.p.s else ""
-        self._construct(
-            NodeType.OR_I,
-            Property(prop_str),
-            [child_x, child_z],
-            self._or_i_sat,
-            self._or_i_dsat,
-            [OP_IF] + child_x._script + [OP_ELSE] + child_z._script + [OP_ENDIF],
-            "or_i(" + child_x.desc + "," + child_z.desc + ")",
-        )
-        return self
-
-    def construct_andor(self, child_x, child_y, child_z):
-        assert child_x.p.has_all("Bdu")
-        for child in child_y, child_z:
-            assert child.p.has_any("BKV")
-
-        prop_str = ""
-        prop_str += "B" if child_x.p.B and child_y.p.B and child_z.p.B else ""
-        prop_str += "K" if child_x.p.B and child_y.p.K and child_z.p.K else ""
-        prop_str += "V" if child_x.p.B and child_y.p.V and child_z.p.V else ""
-        prop_str += "z" if child_x.p.z and child_y.p.z and child_z.p.z else ""
-        prop_str += (
-            "o"
-            if (child_x.p.z and child_y.p.o and child_z.p.o)
-            or (child_x.p.o and child_y.p.z and child_z.p.z)
-            else ""
-        )
-        prop_str += "u" if child_y.p.u and child_z.p.u else ""
-        prop_str += "d" if child_x.p.d and child_z.p.d else ""
-        prop_str += "f" if child_z.p.f and (child_x.p.s or child_y.p.f) else ""
-        prop_str += (
-            "e" if child_x.p.e and child_z.p.e and (child_x.p.s or child_y.p.f) else ""
-        )
-        prop_str += (
-            "m"
-            if child_x.p.m
-            and child_y.p.m
-            and child_z.p.m
-            and child_x.p.e
-            and (child_x.p.s or child_y.p.s or child_z.p.s)
-            else ""
-        )
-        prop_str += "s" if child_z.p.s and (child_x.p.s or child_y.p.s) else ""
-        self._construct(
-            NodeType.ANDOR,
-            Property(prop_str),
-            [child_x, child_y, child_z],
-            self._andor_sat,
-            self._andor_dsat,
-            child_x._script
-            + [OP_NOTIF]
-            + child_z._script
-            + [OP_ELSE]
-            + child_y._script
-            + [OP_ENDIF],
-            "andor(" + child_x.desc + "," + child_y.desc + "," + child_z.desc + ")",
-        )
-        return self
-
-    def construct_a(self, child_x):
-        prop_str = ""
-        prop_str += "W" if child_x.p.B else ""
-        prop_str += "u" if child_x.p.u else ""
-        prop_str += "d" if child_x.p.d else ""
-        prop_str += "f" if child_x.p.f else ""
-        prop_str += "e" if child_x.p.e else ""
-        prop_str += "m" if child_x.p.m else ""
-        prop_str += "s" if child_x.p.s else ""
-        tag = "a" if child_x.t.name.startswith("WRAP_") else "a:"
-        self._construct(
-            NodeType.WRAP_A,
-            Property(prop_str),
-            [child_x],
-            self._a_sat,
-            self._a_dsat,
-            [OP_TOALTSTACK] + child_x._script + [OP_FROMALTSTACK],
-            tag + child_x.desc,
-        )
-        return self
-
-    def construct_s(self, child_x):
-        assert child_x.p.B and child_x.p.o
-        prop_str = "W"
-        prop_str += "u" if child_x.p.u else ""
-        prop_str += "d" if child_x.p.d else ""
-        prop_str += "f" if child_x.p.f else ""
-        prop_str += "e" if child_x.p.e else ""
-        prop_str += "m" if child_x.p.m else ""
-        prop_str += "s" if child_x.p.s else ""
-        tag = "s" if child_x.t.name.startswith("WRAP_") else "s:"
-        self._construct(
-            NodeType.WRAP_S,
-            Property(prop_str),
-            [child_x],
-            self._s_sat,
-            self._s_dsat,
-            [OP_SWAP] + child_x._script,
-            tag + child_x.desc,
-        )
-        return self
-
-    def construct_c(self, child_x):
-        assert child_x.p.K
-        prop_str = "Bu"
-        prop_str += "o" if child_x.p.o else ""
-        prop_str += "n" if child_x.p.n else ""
-        prop_str += "d" if child_x.p.d else ""
-        prop_str += "e" if child_x.p.e else ""
-        prop_str += "m" if child_x.p.m else ""
-        prop_str += "s" if child_x.p.s else ""
-        tag = "c" if child_x.t.name.startswith("WRAP_") else "c:"
-        self._construct(
-            NodeType.WRAP_C,
-            Property(prop_str),
-            [child_x],
-            self._c_sat,
-            self._c_dsat,
-            child_x._script + [OP_CHECKSIG],
-            tag + child_x.desc,
-        )
-        return self
-
-    def construct_t(self, child_x):
-        assert child_x.p.V
-        prop_str = "uf"
-        prop_str += "B" if child_x.p.V else ""
-        prop_str += "n" if child_x.p.n else ""
-        prop_str += "z" if child_x.p.z else ""
-        prop_str += "o" if child_x.p.o else ""
-        prop_str += "m" if child_x.p.m else ""
-        prop_str += "s" if child_x.p.s else ""
-        tag = "t" if child_x.t.name.startswith("WRAP_") else "t:"
-        self._construct(
-            NodeType.WRAP_T,
-            Property(prop_str),
-            [child_x],
-            self._t_sat,
-            self._t_dsat,
-            child_x._script + [1],
-            tag + child_x.desc,
-        )
-        return self
-
-    def construct_d(self, child_x):
-        assert child_x.p.has_all("Vz")
-        prop_str = "nud"
-        prop_str += "B" if child_x.p.V else ""
-        prop_str += "o" if child_x.p.z else ""
-        prop_str += "e" if child_x.p.f else ""
-        prop_str += "m" if child_x.p.m else ""
-        prop_str += "s" if child_x.p.s else ""
-        tag = "d" if child_x.t.name.startswith("WRAP_") else "d:"
-        self._construct(
-            NodeType.WRAP_D,
-            Property(prop_str),
-            [child_x],
-            self._d_sat,
-            self._d_dsat,
-            [OP_DUP, OP_IF] + child_x._script + [OP_ENDIF],
-            tag + child_x.desc,
-        )
-        return self
-
-    def construct_v(self, child_x):
-        assert child_x.p.B
-        prop_str = "V"
-        prop_str += "z" if child_x.p.z else ""
-        prop_str += "o" if child_x.p.o else ""
-        prop_str += "n" if child_x.p.n else ""
-        prop_str += "f"
-        prop_str += "m" if child_x.p.m else ""
-        prop_str += "s" if child_x.p.s else ""
-        tag = "v" if child_x.t.name.startswith("WRAP_") else "v:"
-        # Combine OP_CHECKSIG/OP_CHECKMULTISIG/OP_EQUAL with OP_VERIFY.
-        if child_x._script[-1] == OP_CHECKSIG:
-            script = child_x._script[:-1] + [OP_CHECKSIGVERIFY]
-        elif child_x._script[-1] == OP_CHECKMULTISIG:
-            script = child_x._script[:-1] + [OP_CHECKMULTISIGVERIFY]
-        elif child_x._script[-1] == OP_EQUAL:
-            script = child_x._script[:-1] + [OP_EQUALVERIFY]
-        else:
-            script = child_x._script + [OP_VERIFY]
-        self._construct(
-            NodeType.WRAP_V,
-            Property(prop_str),
-            [child_x],
-            self._v_sat,
-            self._v_dsat,
-            script,
-            tag + child_x.desc,
-        )
-        return self
-
-    def construct_j(self, child_x):
-        assert child_x.p.has_all("Bn")
-        prop_str = "nd"
-        prop_str += "B" if child_x.p.B else ""
-        prop_str += "o" if child_x.p.o else ""
-        prop_str += "u" if child_x.p.u else ""
-        prop_str += "e" if child_x.p.f else ""
-        prop_str += "m" if child_x.p.m else ""
-        prop_str += "s" if child_x.p.s else ""
-        tag = "j" if child_x.t.name.startswith("WRAP_") else "j:"
-        script = [OP_SIZE, OP_0NOTEQUAL, OP_IF] + child_x._script + [OP_ENDIF]
-        self._construct(
-            NodeType.WRAP_J,
-            Property(prop_str),
-            [child_x],
-            self._j_sat,
-            self._j_dsat,
-            script,
-            tag + child_x.desc,
-        )
-        return self
-
-    def construct_n(self, child_x):
-        assert child_x.p.B
-        prop_str = "u"
-        prop_str += "B" if child_x.p.B else ""
-        prop_str += "z" if child_x.p.z else ""
-        prop_str += "o" if child_x.p.o else ""
-        prop_str += "n" if child_x.p.n else ""
-        prop_str += "d" if child_x.p.d else ""
-        prop_str += "f" if child_x.p.f else ""
-        prop_str += "e" if child_x.p.e else ""
-        prop_str += "m" if child_x.p.m else ""
-        prop_str += "s" if child_x.p.s else ""
-        tag = "n" if child_x.t.name.startswith("WRAP_") else "n:"
-        self._construct(
-            NodeType.WRAP_N,
-            Property(prop_str),
-            [child_x],
-            self._n_sat,
-            self._n_dsat,
-            child_x._script + [OP_0NOTEQUAL],
-            tag + child_x.desc,
-        )
-        return self
-
-    def construct_l(self, child_x):
-        assert child_x.p.has_any("BKV")
-
-        prop_str = "d"
-        prop_str += "B" if child_x.p.B else ""
-        prop_str += "o" if child_x.p.z else ""
-        prop_str += "u" if child_x.p.u else ""
-        prop_str += "e" if child_x.p.f else ""
-        prop_str += "m" if child_x.p.m else ""
-        prop_str += "s" if child_x.p.s else ""
-        tag = "l" if child_x.t.name.startswith("WRAP_") else "l:"
-        script = [OP_IF, 0, OP_ELSE] + child_x._script + [OP_ENDIF]
-        self._construct(
-            NodeType.WRAP_L,
-            Property(prop_str),
-            [child_x],
-            self._l_sat,
-            self._l_dsat,
-            script,
-            tag + child_x.desc,
-        )
-        return self
-
-    def construct_u(self, child_x):
-        assert child_x.p.has_any("BKV")
-
-        prop_str = "d"
-        prop_str += "B" if child_x.p.B else ""
-        prop_str += "o" if child_x.p.z else ""
-        prop_str += "u" if child_x.p.u else ""
-        prop_str += "e" if child_x.p.f else ""
-        prop_str += "m" if child_x.p.m else ""
-        prop_str += "s" if child_x.p.s else ""
-        tag = "u" if child_x.t.name.startswith("WRAP_") else "u:"
-        script = [OP_IF] + child_x._script + [OP_ELSE, 0, OP_ENDIF]
-        self._construct(
-            NodeType.WRAP_U,
-            Property(prop_str),
-            [child_x],
-            self._u_sat,
-            self._u_dsat,
-            script,
-            tag + child_x.desc,
-        )
-        return self
-
-    def construct_thresh(self, k, children_n):
-        n = len(children_n)
-        assert n >= k >= 1
-        child_is_z_count = 0
-        child_is_o_count = 0
-        child_is_s_count = 0
-        child_is_e = True
-        child_is_m = True
-        for idx, child in enumerate(children_n):
-            assert child.p.d and child.p.u
-            child_is_z_count += 1 if child.p.z else 0
-            child_is_o_count += 1 if child.p.o else 0
-            child_is_s_count += 1 if child.p.s else 0
-            child_is_e = child_is_e and child.p.e
-            child_is_m = child_is_m and child.p.m
-            if idx == 0:
-                is_B = child.p.B
-            else:
-                is_B = is_B and child.p.W
-        prop_str = "Bdu" if is_B else ""
-        if child_is_z_count == n:
-            prop_str += "z"
-        elif (child_is_z_count == n - 1) and (child_is_o_count == 1):
-            prop_str += "o"
-        if child_is_e and (child_is_s_count is n):
-            prop_str += "e"
-        if child_is_e and child_is_m and child_is_s_count >= (n - k):
-            prop_str += "m"
-        if child_is_s_count >= (n - k + 1):
-            prop_str += "s"
-        script = []
-        script.extend(children_n[0]._script)
-        for child in children_n[1:]:
-            script.extend(child._script + [OP_ADD])
-        script.extend([k] + [OP_EQUAL])
-        self._k = k
-
-        desc = "thresh(" + str(k) + ","
-        for idx, child in enumerate(children_n):
-            desc += child.desc
-            desc += "," if idx != (n - 1) else ")"
-
-        self._construct(
-            NodeType.THRESH,
-            Property(prop_str),
-            children_n,
-            self._thresh_sat,
-            self._thresh_dsat,
-            script,
-            desc,
-        )
-        return self
-
     def _construct(self, node_type, node_prop, children, sat, dsat, script, desc):
         self.t = node_type
         self.p = node_prop
@@ -1591,89 +951,6 @@ class Node:
         self._dsat_ncan = self._lift_dsat_ncan()
         self._script = script
         self.desc = desc
-
-    # sat/dsat methods for terminal node types:
-    def _just_1_sat(self):
-        return [[]]
-
-    def _just_1_dsat(self):
-        return [[]]
-
-    def _just_0_sat(self):
-        return [[]]
-
-    def _just_0_dsat(self):
-        return [[]]
-
-    def _pk_k_sat(self):
-        # Returns (SIGNATURE, 33B_PK) tuple.
-        return [[(SatType.SIGNATURE, self._pk_k[0])]]
-
-    def _pk_k_dsat(self):
-        return [[(SatType.DATA, b"")]]
-
-    def _pk_h_sat(self):
-        # Returns (SIGNATURE, 32B_PK_HASH) tuple.
-        return [
-            [
-                (SatType.SIGNATURE, self._pk_h),
-                (SatType.KEY_AND_HASH160_PREIMAGE, self._pk_h),
-            ]
-        ]
-
-    def _pk_h_dsat(self):
-        return [[(SatType.DATA, b""), (SatType.KEY_AND_HASH160_PREIMAGE, self._pk_h)]]
-
-    def _older_sat(self):
-        return [[(SatType.OLDER, self._delay)]]
-
-    def _older_dsat(self):
-        return [[]]
-
-    def _after_sat(self):
-        return [[(SatType.AFTER, self._time)]]
-
-    def _after_dsat(self):
-        return [[]]
-
-    def _sha256_sat(self):
-        return [[(SatType.SHA256_PREIMAGE, self._sha256)]]
-
-    def _sha256_dsat(self):
-        return [[(SatType.DATA, bytes(32))]]
-
-    def _hash256_sat(self):
-        return [[(SatType.HASH256_PREIMAGE, self._hash256)]]
-
-    def _hash256_dsat(self):
-        return [[(SatType.DATA, bytes(32))]]
-
-    def _ripemd160_sat(self):
-        return [[(SatType.RIPEMD160_PREIMAGE, self._ripemd160)]]
-
-    def _ripemd160_dsat(self):
-        return [[(SatType.DATA, bytes(32))]]
-
-    def _hash160_sat(self):
-        return [[(SatType.HASH160_PREIMAGE, self._hash160)]]
-
-    def _hash160_dsat(self):
-        return [[(SatType.DATA, bytes(32))]]
-
-    def _multi_sat(self):
-        multi_sat_ls = []
-        n = len(self._pk_n)
-        for i in range(2 ** n):
-            if bin(i).count("1") == self._k:
-                sat = [(SatType.DATA, b"")]
-                for j in range(n):
-                    if ((1 << j) & i) != 0:
-                        sat.append((SatType.SIGNATURE, self._pk_n[j]))
-                multi_sat_ls.append(sat)
-        return multi_sat_ls
-
-    def _multi_dsat(self):
-        return [[(SatType.DATA, b"")] * (self._k + 1)]
 
     # sat/dsat methods for node types with children:
     # sat must return list of possible satisfying witnesses.
@@ -1932,3 +1209,676 @@ class Node:
                 expr_list = expr_list[:idx] + [OP_EQUALVERIFY] + expr_list[idx + 2 :]
             idx += 1
         return expr_list
+
+
+class Just0(Node):
+    def __init__(self):
+        Node.__init__(self)
+
+        self.t = NodeType.JUST_0
+        self.p = Property("Bzudems")
+        self._script = [OP_0]
+        self.sat = [[]]
+        self.dsat = [[]]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        return "0"
+
+
+class Just1(Node):
+    def __init__(self):
+        Node.__init__(self)
+
+        self.t = NodeType.JUST_1
+        self.p = Property("Bzufm")
+        self._script = [OP_1]
+        self.sat = [[]]
+        self.dsat = [[]]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        return "1"
+
+
+class PkNode(Node):
+    def __init__(self, pubkey):
+        Node.__init__(self)
+
+        if isinstance(pubkey, bytes) or isinstance(pubkey, str):
+            self.pubkey = MiniscriptKey(pubkey)
+        elif isinstance(pubkey, MiniscriptKey):
+            self.pubkey = pubkey
+        else:
+            raise MiniscriptNodeCreationError("Invalid pubkey for pk_k node")
+
+        self.t = NodeType.PK_K
+        self.p = Property("Konudems")
+        self._script = [self.pubkey.bytes()]
+        # FIXME: seems like the SIGNATURE should be in c:, not there
+        self.sat = [[(SatType.SIGNATURE, self.pubkey)]]
+        self.dsat = [[(SatType.DATA, b"")]]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        return f"pk_k({self.pubkey.bytes().hex()})"
+
+
+class PkhNode(Node):
+    def __init__(self, pk_or_pkh):
+        Node.__init__(self)
+
+        if (
+            isinstance(pk_or_pkh, bytes)
+            and len(pk_or_pkh) == 33
+            or isinstance(pk_or_pkh, str)
+            and len(pk_or_pkh) == 66
+        ):
+            self.pk_or_pkh = MiniscriptKey(pk_or_pkh)
+        elif isinstance(pk_or_pkh, bytes) and len(pk_or_pkh) == 20:
+            self.pk_or_pkh = pk_or_pkh
+        elif isinstance(pk_or_pkh, str) and len(pk_or_pkh) == 40:
+            self.pk_or_pkh = bytes.fromhex(pk_or_pkh)
+        elif isinstance(pk_or_pkh, MiniscriptKey):
+            self.pk_or_pkh = pk_or_pkh
+        else:
+            raise MiniscriptNodeCreationError("Invalid pubkey or hash for pk_h node")
+
+        self.t = NodeType.PK_H
+        self.p = Property("Knudems")
+        self._script = [OP_DUP, OP_HASH160, self.pk_hash(), OP_EQUALVERIFY]
+        # FIXME: seems like the SIGNATURE should be in c:, not there
+        self.sat = [
+            [
+                (SatType.SIGNATURE, self._pk_h),
+                (SatType.KEY_AND_HASH160_PREIMAGE, self._pk_h),
+            ]
+        ]
+        self.dsat = [
+            [(SatType.DATA, b""), (SatType.KEY_AND_HASH160_PREIMAGE, self._pk_h)]
+        ]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        if isinstance(self.pk_or_pkh, MiniscriptKey):
+            return f"pk_h({self.pk_or_pkh.bytes().hex()})"
+        else:
+            assert isinstance(self.pk_or_pkh, bytes)
+            return f"pk_h({self.pk_or_pkh.hex()})"
+
+    def pk_hash(self):
+        if isinstance(self.pk_or_pkh, MiniscriptKey):
+            return hash160(self.pk_or_pkh.bytes())
+        assert isinstance(self.pk_or_pkh, bytes)
+        if len(self.pk_or_pkh) == 20:
+            return self.pk_or_pkh
+        else:
+            assert len(self.pk_or_pkh) == 33
+            return hash160(self.pk_or_pkh)
+
+
+class Older(Node):
+    def __init__(self, value):
+        assert value > 0 and value < 2 ** 31
+
+        self.value = value
+        self.t = NodeType.OLDER
+        self.p = Property("Bzmf")
+        self._script = [self.value, OP_CHECKSEQUENCEVERIFY]
+        self.sat = [[(SatType.OLDER, self.value)]]
+        self.dsat = [[]]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        return f"older({self.value})"
+
+
+class After(Node):
+    def __init__(self, value):
+        assert value > 0 and value < 2 ** 31
+
+        self.value = value
+        self.t = NodeType.AFTER
+        self.p = Property("Bzmf")
+        self._script = [self.value, OP_CHECKLOCKTIMEVERIFY]
+        self.sat = [[(SatType.AFTER, self.value)]]
+        self.dsat = [[]]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        return f"after({self.value})"
+
+
+class Sha256(Node):
+    def __init__(self, digest):
+        assert isinstance(digest, bytes) and len(digest) == 32
+
+        self.digest = digest
+        self.t = NodeType.SHA256
+        self.p = Property("Bonudm")
+        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_SHA256, digest, OP_EQUAL]
+        self.sat = [[(SatType.SHA256_PREIMAGE, self.digest)]]
+        self.dsat = [[(SatType.DATA, bytes(32))]]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        return f"sha256({self.digest.hex()})"
+
+
+class Hash256(Node):
+    def __init__(self, digest):
+        assert isinstance(digest, bytes) and len(digest) == 32
+
+        self.digest = digest
+        self.t = NodeType.HASH256
+        self.p = Property("Bonudm")
+        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH256, digest, OP_EQUAL]
+        self.sat = [[(SatType.HASH256_PREIMAGE, self.digest)]]
+        self.dsat = [[(SatType.DATA, bytes(32))]]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        return f"hash256({self.digest.hex()})"
+
+
+class Ripemd160(Node):
+    def __init__(self, digest):
+        assert isinstance(digest, bytes) and len(digest) == 20
+
+        self.digest = digest
+        self.t = NodeType.RIPEMD160
+        self.p = Property("Bonudm")
+        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, digest, OP_EQUAL]
+        self.sat = [[(SatType.RIPEMD160_PREIMAGE, self.digest)]]
+        self.dsat = [[(SatType.DATA, bytes(32))]]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        return f"ripemd160({self.digest.hex()})"
+
+
+class Hash160(Node):
+    def __init__(self, digest):
+        assert isinstance(digest, bytes) and len(digest) == 20
+
+        self.digest = digest
+        self.t = NodeType.HASH160
+        self.p = Property("Bonudm")
+        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH160, digest, OP_EQUAL]
+        self.sat = [[(SatType.HASH160_PREIMAGE, self.digest)]]
+        self.dsat = [[(SatType.DATA, bytes(32))]]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        return f"hash160({self.digest.hex()})"
+
+
+class Multi(Node):
+    def __init__(self, k, keys):
+        assert 1 <= k <= len(keys)
+
+        self.t = NodeType.MULTI
+        self.k = k
+        self.keys = keys
+        self.p = Property("Bndu")
+        self._script = [k, *[k.bytes() for k in keys], len(keys), OP_CHECKMULTISIG]
+        # FIXME: implement satisfier directly
+        self.sat = [[]]
+        self.dsat = [[(SatType.DATA, bytes(0))] * (k + 1)]
+        self._sat_ncan = [[None]]
+        self._dsat_ncan = [[None]]
+
+    def __repr__(self):
+        return f"multi({','.join([self.k] + self.keys)})"
+
+
+class AndV(Node):
+    def __init__(self, child_x, child_y):
+        assert child_x.p.V
+        assert child_y.p.has_any("BKV")
+
+        # FIXME: don't use properties for malleability tracking
+        self.t = NodeType.AND_V
+        self.p = Property(
+            child_y.p.type()
+            + ("z" if child_x.p.z and child_y.p.z else "")
+            + (
+                "o"
+                if child_x.p.z and child_y.p.o or child_x.p.o and child_y.p.z
+                else ""
+            )
+            + ("n" if child_x.p.n or child_x.p.z and child_y.p.n else "")
+            + ("u" if child_y.p.u else "")
+            + ("f" if child_y.p.f or child_x.p.s else "")
+            + ("s" if child_x.p.s or child_y.p.s else "")
+            + ("m" if child_x.p.m and child_y.p.m else "")
+        )
+        self.subs = [child_x, child_y]
+
+        self._script = child_x._script + child_y._script
+        # TODO: satisfaction
+
+    def __repr__(self):
+        return f"and_v({','.join(self.subs)})"
+
+
+class AndB(Node):
+    def __init__(self, child_x, child_y):
+        assert child_x.p.B and child_y.p.W
+
+        # FIXME: don't use properties for malleability tracking
+        self.t = NodeType.AND_B
+        self.p = Property(
+            "Bu"
+            + ("z" if child_x.p.z and child_y.p.z else "")
+            + (
+                "o"
+                if child_x.p.z and child_y.p.o or child_x.p.o and child_y.p.z
+                else ""
+            )
+            + ("n" if child_x.p.n or child_x.p.z and child_y.p.n else "")
+            + ("d" if child_x.p.d and child_y.p.d else "")
+            + ("u" if child_y.p.u else "")
+            + (
+                "f"
+                if child_x.p.f
+                and child_y.p.f
+                or any(c.p.has_all("sf") for c in [child_x, child_y])
+                else ""
+            )
+            + ("s" if child_x.p.s or child_y.p.s else "")
+            + ("m" if child_x.p.m and child_y.p.m else "")
+        )
+        self.subs = [child_x, child_y]
+
+        self._script = [*child_x._script, *child_y._script, OP_BOOLAND]
+        # TODO: satisfaction
+
+    def __repr__(self):
+        return f"and_b({','.join(self.subs)})"
+
+
+class OrB(Node):
+    def __init__(self, sub_x, sub_z):
+        assert sub_x.p.has_all("Bd")
+        assert sub_z.p.has_all("Wd")
+
+        self.t = NodeType.OR_B
+        self.p = Property(
+            "Bdu"
+            + ("z" if sub_x.p.z and sub_z.p.z else "")
+            + ("o" if sub_x.p.z and sub_z.p.o or sub_x.p.o and sub_z.p.z else "")
+            + ("f" if sub_x.p.f or sub_z.p.f else "")
+            + ("s" if sub_x.p.s and sub_z.p.s else "")
+            + (
+                "m"
+                if sub_x.p.m
+                and sub_z.p.m
+                and sub_x.p.e
+                and sub_z.p.e
+                and (sub_x.p.s or sub_z.p.s)
+                else ""
+            )
+        )
+        self.subs = [sub_x, sub_z]
+
+        self._script = [*sub_x._script, *sub_z._script, OP_BOOLOR]
+        # TODO: satisfaction
+
+    def __repr__(self):
+        return f"or_b({','.join(self.subs)})"
+
+
+class OrC(Node):
+    def __init__(self, sub_x, sub_z):
+        assert sub_x.p.has_all("Bdu") and sub_z.p.V
+
+        self.t = NodeType.OR_C
+        self.p = Property(
+            "V"
+            + ("z" if sub_x.p.z and sub_z.p.z else "")
+            + ("o" if sub_x.p.o and sub_z.p.z else "")
+            + ("f" if sub_x.p.f or sub_z.p.f else "")
+            + ("s" if sub_x.p.s and sub_z.p.s else "")
+            + (
+                "m"
+                if sub_x.p.m and sub_z.p.m and sub_x.p.e and (sub_x.p.s or sub_z.p.s)
+                else ""
+            )
+        )
+        self.subs = [sub_x, sub_z]
+
+        self._script = [*sub_x._script, OP_NOTIF, *sub_z._script, OP_ENDIF]
+        # TODO: satisfaction
+
+    def __repr__(self):
+        return f"or_c({','.join(self.subs)})"
+
+
+class OrD(Node):
+    def __init__(self, sub_x, sub_z):
+        assert sub_x.p.has_all("Bdu")
+        assert sub_z.p.has_all("B")
+
+        self.t = NodeType.OR_D
+        self.p = Property(
+            "B"
+            + ("z" if sub_x.p.z and sub_z.p.z else "")
+            + ("o" if sub_x.p.o and sub_z.p.z else "")
+            + ("d" if sub_z.p.d else "")
+            + ("u" if sub_z.p.u else "")
+            + ("f" if sub_x.p.f or sub_z.p.f else "")
+            + ("s" if sub_x.p.s and sub_z.p.s else "")
+            + ("e" if sub_x.p.e and sub_z.p.e else "")
+            + (
+                "m"
+                if sub_x.p.m and sub_z.p.m and sub_x.p.e and (sub_x.p.s or sub_z.p.s)
+                else ""
+            )
+        )
+        self.subs = [sub_x, sub_z]
+
+        self._script = [*sub_x._script, OP_IFDUP, OP_NOTIF, *sub_z._script, OP_ENDIF]
+        # TODO: satisfaction
+
+    def __repr__(self):
+        return f"or_d({','.join(self.subs)})"
+
+
+class OrI(Node):
+    def __init__(self, sub_x, sub_z):
+        assert sub_x.p.type() == sub_z.p.type() and sub_x.p.has_any("BKV")
+
+        self.t = NodeType.OR_I
+        self.p = Property(
+            sub_x.p.type()
+            + ("o" if sub_x.p.z and sub_z.p.z else "")
+            + ("d" if sub_x.p.d or sub_z.p.d else "")
+            + ("u" if sub_x.p.u and sub_z.p.u else "")
+            + ("f" if sub_x.p.f and sub_z.p.f else "")
+            + ("s" if sub_x.p.s and sub_z.p.s else "")
+            + ("e" if (sub_x.p.e and sub_z.p.f) or (sub_x.p.f and sub_z.p.e) else "")
+            + ("m" if sub_x.p.m and sub_z.p.m and (sub_x.p.s or sub_z.p.s) else "")
+        )
+        self.subs = [sub_x, sub_z]
+
+        self._script = [OP_IF, *sub_x._script, OP_ELSE, *sub_z._script, OP_ENDIF]
+
+    def __repr__(self):
+        return f"or_i({','.join(self.subs)})"
+
+
+class AndOr(Node):
+    # FIXME: rename all 'child' to 'sub'
+    def __init__(self, child_x, child_y, child_z):
+        assert child_x.p.has_all("Bdu")
+        assert child_y.p.type() == child_z.p.type() and child_y.p.has_any("BKV")
+
+        self.t = NodeType.ANDOR
+        self.p = Property(
+            child_y.p.type()
+            + ("z" if child_x.p.z and child_y.p.z and child_z.p.z else "")
+            + (
+                "o"
+                if child_x.p.z
+                and child_y.p.o
+                and child_z.p.o
+                or child_x.p.o
+                and child_y.p.z
+                and child_z.p.z
+                else ""
+            )
+            + ("d" if child_z.p.d else "")
+            + ("u" if child_y.p.u and child_z.p.u else "")
+            + ("f" if child_z.p.f and (child_x.p.s or child_y.p.f) else "")
+            + (
+                "e"
+                if child_x.p.e and child_z.p.e and (child_x.p.s or child_y.p.f)
+                else ""
+            )
+            + (
+                "m"
+                if child_x.p.m
+                and child_y.p.m
+                and child_z.p.m
+                and child_x.p.e
+                and (child_x.p.s or child_y.p.s or child_z.p.s)
+                else ""
+            )
+            + ("s" if child_z.p.s and (child_x.p.s or child_y.p.s) else "")
+        )
+        self.subs = [child_x, child_y, child_z]
+
+        self._script = [
+            *child_x._script,
+            OP_NOTIF,
+            *child_z._script,
+            OP_ELSE,
+            *child_y._script,
+            OP_ENDIF,
+        ]
+        # TODO: satisfaction
+
+    def __repr__(self):
+        return f"andor({','.join(self.subs)})"
+
+
+class AndN(AndOr):
+    def __init__(self, sub_x, sub_y):
+        AndOr.__init__(self, sub_x, sub_y, Just0())
+
+    def __repr__(self):
+        return f"and_n({self.subs[0]},{self.subs[1]})"
+
+
+class Thresh(Node):
+    def __init__(self, k, subs):
+        n = len(subs)
+        assert 1 <= k <= n
+
+        all_z = True
+        all_z_but_one_odu = False
+        all_e = True
+        all_m = True
+        s_count = 0
+        assert subs[0].p.has_all("Bdu")
+        for sub in subs[1:]:
+            assert sub.p.has_all("Wdu")
+            if not sub.p.z:
+                if all_z_but_one_odu:
+                    # Fails "all 'z' but one"
+                    all_z_but_one_odu = False
+                if all_z and sub.p.has_all("odu"):
+                    # They were all 'z' up to now.
+                    all_z_but_one_odu = True
+                all_z = False
+            all_e = all_e and sub.p.e
+            all_m = all_m and sub.p.m
+            if sub.p.s:
+                s_count += 1
+
+        self.t = NodeType.THRESH
+        self.p = Property(
+            "B"
+            + ("z" if all_z else "")
+            + ("o" if all_z_but_one_odu else "")
+            + ("e" if all_e and s_count == n else "")
+            + ("m" if all_e and all_m and s_count >= n - k else "")
+            + ("s" if s_count >= n - k + 1 else "")
+        )
+        self.k = k
+        self.subs = subs
+        self._script = subs[0]._script
+        for sub in subs[1:]:
+            self._script += [*sub._script, OP_ADD]
+        self._script += [k, OP_EQUAL]
+
+    def __repr__(self):
+        return f"thresh({self.k},{''.join(self.subs)})"
+
+
+class WrapA(Node):
+    def __init__(self, sub):
+        assert sub.p.B
+
+        self.t = NodeType.WRAP_A
+        self.p = Property("W" + "".join(c for c in "udfems" if getattr(sub.p, c)))
+        self.subs = [sub]
+        self._script = [OP_TOALTSTACK, *sub._script, OP_FROMALTSTACK]
+
+    def __repr__(self):
+        # Avoid duplicating colons
+        if str(self.subs[0])[1] == ":":
+            return f"a{self.subs[0]}"
+        return f"a:{self.subs[0]}"
+
+
+class WrapS(Node):
+    def __init__(self, sub):
+        assert sub.p.has_all("Bo")
+
+        self.t = NodeType.WRAP_S
+        self.p = Property("W" + "".join(c for c in "udfems" if getattr(sub.p, c)))
+        self.subs = [sub]
+        self._script = [OP_SWAP, *sub._script]
+
+    def __repr__(self):
+        # Avoid duplicating colons
+        if str(self.subs[0])[1] == ":":
+            return f"s{self.subs[0]}"
+        return f"s:{self.subs[0]}"
+
+
+class WrapC(Node):
+    def __init__(self, sub):
+        assert sub.p.K
+
+        self.t = NodeType.WRAP_C
+        # FIXME: shouldn't n and d be default props on the website?
+        self.p = Property("Bsndu" + ("o" if sub.p.o else ""))
+        self.subs = [sub]
+        self._script = [*sub._script, OP_CHECKSIG]
+
+    def __repr__(self):
+        # Avoid duplicating colons
+        if str(self.subs[0])[1] == ":":
+            return f"c{self.subs[0]}"
+        return f"c:{self.subs[0]}"
+
+
+# FIXME: shouldn't we just ser/deser the AndV class specifically instead?
+class WrapT(AndV):
+    def __init__(self, sub):
+        AndV.__init__(self, sub, Just1())
+        self.t = NodeType.WRAP_T
+
+    def __repr__(self):
+        # Avoid duplicating colons
+        if str(self.subs[0])[1] == ":":
+            return f"t{self.subs[0]}"
+        return f"t:{self.subs[0]}"
+
+
+class WrapD(Node):
+    def __init__(self, sub):
+        assert sub.p.has_all("Vz")
+
+        self.t = NodeType.WRAP_D
+        self.p = Property("Bondu" + "".join(c for c in "ems" if getattr(sub.p, c)))
+        self.subs = [sub]
+        self._script = [OP_DUP, OP_IF, *sub._script, OP_ENDIF]
+
+    def __repr__(self):
+        # Avoid duplicating colons
+        if str(self.subs[0])[1] == ":":
+            return f"d{self.subs[0]}"
+        return f"d:{self.subs[0]}"
+
+
+class WrapV(Node):
+    def __init__(self, sub):
+        assert sub.p.B
+
+        self.t = NodeType.WRAP_V
+        self.p = Property("Vf" + "".join(c for c in "zonems" if getattr(sub.p, c)))
+        self.subs = [sub]
+        if sub._script[-1] == OP_CHECKSIG:
+            self._script = [*sub._script[:-1], OP_CHECKSIGVERIFY]
+        elif sub._script[-1] == OP_CHECKMULTISIG:
+            self._script = [*sub._script[:-1], OP_CHECKMULTISIGVERIFY]
+        elif sub._script[-1] == OP_EQUAL:
+            self._script = [*sub._script[:-1], OP_EQUALVERIFY]
+        else:
+            self._script = [*sub._script, OP_VERIFY]
+
+    def __repr__(self):
+        # Avoid duplicating colons
+        if str(self.subs[0])[1] == ":":
+            return f"v{self.subs[0]}"
+        return f"v:{self.subs[0]}"
+
+
+class WrapJ(Node):
+    def __init__(self, sub):
+        assert sub.p.has_all("Bn")
+
+        self.t = NodeType.WRAP_J
+        self.p = Property("Bnd" + "".join(c for c in "ouems" if getattr(sub.p, c)))
+        self.subs = [sub]
+        self._script = [OP_SIZE, OP_0NOTEQUAL, OP_IF, *sub._script, OP_ENDIF]
+
+    def __repr__(self):
+        # Avoid duplicating colons
+        if str(self.subs[0])[1] == ":":
+            return f"j{self.subs[0]}"
+        return f"j:{self.subs[0]}"
+
+
+class WrapN(Node):
+    def __init__(self, sub):
+        assert sub.p.B
+
+        self.t = NodeType.WRAP_J
+        self.p = Property("Bu" + "".join(c for c in "zondfems" if getattr(sub.p, c)))
+        self.subs = [sub]
+        self._script = [*sub._script, OP_0NOTEQUAL]
+
+    def __repr__(self):
+        # Avoid duplicating colons
+        if str(self.subs[0])[1] == ":":
+            return f"n{self.subs[0]}"
+        return f"n:{self.subs[0]}"
+
+
+class WrapL(OrI):
+    def __init__(self, sub):
+        OrI.__init__(self, Just0(), sub)
+        self.t = NodeType.WRAP_L
+
+    def __repr__(self):
+        # Avoid duplicating colons
+        if str(self.subs[0])[1] == ":":
+            return f"l{self.subs[0]}"
+        return f"l:{self.subs[0]}"
+
+
+class WrapU(OrI):
+    def __init__(self, sub):
+        OrI.__init__(self, sub, Just0())
+        self.t = NodeType.WRAP_U
+
+    def __repr__(self):
+        # Avoid duplicating colons
+        if str(self.subs[0])[1] == ":":
+            return f"u{self.subs[0]}"
+        return f"u:{self.subs[0]}"

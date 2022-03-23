@@ -8,6 +8,7 @@ class MiniscriptPropertyError(ValueError):
         self.message = message
 
 
+# FIXME: should we separate type and properties?
 # TODO: implement __eq__
 class Property:
     """Miniscript expression property"""
