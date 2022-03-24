@@ -537,6 +537,8 @@ class Node:
         self._k = None
         self._pk_k = []
         self._pk_h = []
+        # A list of Script elements, a CScript is created all at once in the script() method.
+        self._script = []
 
     def __repr__(self):
         return f"{self.t}(k = {self._k}, pk_k = {[k.hex() for k in self._pk_k]}, pk_h = {self._pk_h})"
@@ -655,10 +657,10 @@ class Node:
 
         assert False  # TODO
 
+    # TODO: have something like BuildScript from Core and get rid of the _script member.
     @property
     def script(self):
-        # TODO: just have a script member that is a CScript
-        return CScript(Node._collapse_script(self._script))
+        return CScript(self._script)
 
     @staticmethod
     def from_script(c_script):
@@ -820,21 +822,6 @@ class Node:
                 expr_list = (
                     expr_list[:idx] + [OP_EQUAL, OP_VERIFY] + expr_list[idx + 1 :]
                 )
-            idx += 1
-        return expr_list
-
-    @staticmethod
-    def _collapse_script(expr_list):
-        idx = 0
-        while idx < len(expr_list):
-            if expr_list[idx : idx + 1] == [OP_CHECKSIG, OP_VERIFY]:
-                expr_list = expr_list[:idx] + [OP_CHECKSIGVERIFY] + expr_list[idx + 2 :]
-            elif expr_list[idx : idx + 1] == [OP_CHECKMULTISIG, OP_VERIFY]:
-                expr_list = (
-                    expr_list[:idx] + [OP_CHECKMULTISIGVERIFY] + expr_list[idx + 2 :]
-                )
-            elif expr_list[idx : idx + 1] == [OP_EQUAL, OP_VERIFY]:
-                expr_list = expr_list[:idx] + [OP_EQUALVERIFY] + expr_list[idx + 2 :]
             idx += 1
         return expr_list
 
