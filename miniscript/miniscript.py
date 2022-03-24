@@ -487,23 +487,6 @@ def parse_nonterm_6_elems(expr_list, idx):
     """
     (it_a, it_b, it_c, it_d, it_e, it_f) = expr_list[idx : idx + 6]
 
-    # TODO: merge the two branches
-    # Match against and_n.
-    if (
-        isinstance(it_a, Node)
-        and it_a.p.has_all("Bdu")
-        and it_b == OP_NOTIF
-        and isinstance(it_c, Node)
-        and it_c.t == Fragment.JUST_0
-        and it_d == OP_ELSE
-        and isinstance(it_e, Node)
-        and it_e.p.has_any("BKV")
-        and it_f == OP_ENDIF
-    ):
-        node = AndN(it_a, it_e)
-        expr_list[idx : idx + 6] = [node]
-        return expr_list
-
     # Match against andor.
     if (
         isinstance(it_a, Node)
@@ -516,7 +499,10 @@ def parse_nonterm_6_elems(expr_list, idx):
         and it_e.p.has_any("BKV")
         and it_f == OP_ENDIF
     ):
-        node = AndOr(it_a, it_e, it_c)
+        if isinstance(it_c, Just0):
+            node = AndN(it_a, it_e)
+        else:
+            node = AndOr(it_a, it_e, it_c)
         expr_list[idx : idx + 6] = [node]
         return expr_list
 
