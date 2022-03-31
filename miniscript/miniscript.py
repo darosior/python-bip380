@@ -455,15 +455,9 @@ def parse_nonterm_6_elems(expr_list, idx):
 
 
 class Node:
-    """Miniscript expression class
-
-    Provides methods to instantiate a miniscript node from a string descriptor
-    or script.
-    """
+    """A Miniscript fragment."""
 
     def __init__(self):
-        # TODO: rename (or remove..)
-        self.desc = ""
         self.children = None
         self.p = None
         self._k = None
@@ -475,10 +469,9 @@ class Node:
     def __repr__(self):
         return f"(k = {self._k}, pk_k = {[k.hex() for k in self._pk_k]}, pk_h = {self._pk_h})"
 
-    # TODO: rename..
     @staticmethod
-    def from_desc(string):
-        """Construct miniscript node from string descriptor"""
+    def from_str(string):
+        """Construct miniscript node from string representation"""
         tag, child_exprs = Node._parse_string(string)
         k = None
 
@@ -700,7 +693,7 @@ class Node:
     def _parse_child_strings(child_exprs):
         child_nodes = []
         for string in child_exprs:
-            child_nodes.append(Node.from_desc(string))
+            child_nodes.append(Node.from_str(string))
         return child_nodes
 
     @staticmethod

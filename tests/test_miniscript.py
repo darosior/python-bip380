@@ -33,11 +33,11 @@ def roundtrip(ms_str):
     Note that the Script representation does not necessarily roundtrip. However
     it must be deterministic.
     """
-    node_a = Node.from_desc(ms_str)
+    node_a = Node.from_str(ms_str)
     node_b = Node.from_script(node_a.script)
 
     assert node_b.script == Node.from_script(node_b.script).script
-    assert str(node_b) == str(Node.from_desc(str(node_b)))
+    assert str(node_b) == str(Node.from_str(str(node_b)))
 
     return node_b
 
@@ -45,10 +45,10 @@ def roundtrip(ms_str):
 def test_simple_sanity_checks():
     """Some quick and basic sanity checks of the implem. The place to add new findings."""
 
-    not_aliased = Node.from_desc(
+    not_aliased = Node.from_str(
         "and_v(vc:pk_k(027a1b8c69c6a4e90ce85e0dd6fb99c51ef8af35b88f20f9f74f8f937f7acaec15),c:pk_k(023c110f0946ed6160ee95eee86efb79d13421d1b460f592b04dd21d74852d7631))"
     )
-    aliased = Node.from_desc(
+    aliased = Node.from_str(
         "and_v(v:pk(027a1b8c69c6a4e90ce85e0dd6fb99c51ef8af35b88f20f9f74f8f937f7acaec15),pk(023c110f0946ed6160ee95eee86efb79d13421d1b460f592b04dd21d74852d7631))"
     )
     assert aliased.script == not_aliased.script
@@ -138,7 +138,7 @@ def test_compat_valid():
     with open(valid_samples, "r") as f:
         for line in f:
             ms, hexscript = line.strip().split(" ")
-            assert Node.from_desc(ms).script.hex() == hexscript
+            assert Node.from_str(ms).script.hex() == hexscript
 
 
 def test_compat_invalid():
@@ -148,4 +148,4 @@ def test_compat_invalid():
     with open(invalid_samples, "r") as f:
         for line in f:
             with pytest.raises(Exception):
-                Node.from_desc(line.strip())
+                Node.from_str(line.strip())
