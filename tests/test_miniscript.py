@@ -28,12 +28,16 @@ hash160("01")
 
 
 def roundtrip(ms_str):
+    """Test we can parse to and from Script and string representation.
+
+    Note that the Script representation does not necessarily roundtrip. However
+    it must be deterministic.
+    """
     node_a = Node.from_desc(ms_str)
     node_b = Node.from_script(node_a.script)
 
-    assert node_a.script == node_b.script
-    assert str(node_a.p) == str(node_b.p)
-    assert node_a.t == node_b.t
+    assert node_b.script == Node.from_script(node_b.script).script
+    assert str(node_b) == str(Node.from_desc(str(node_b)))
 
     return node_b
 
@@ -94,8 +98,12 @@ def test_simple_sanity_checks():
     )
     roundtrip(f"or_b(c:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}))")
     roundtrip(f"or_d(c:pk_k({dummy_pk()}),c:pk_k({dummy_pk()}))")
-    roundtrip(f"t:or_c(c:pk_k({dummy_pk()}),and_v(vc:pk_k({dummy_pk()}),or_c(c:pk_k({dummy_pk()}),v:hash160({dummy_h160()}))))")
-    roundtrip(f"t:or_c(c:pk_k({dummy_pk()}),and_v(vc:pk_k({dummy_pk()}),or_c(c:pk_k({dummy_pk()}),v:sha256({dummy_h256()}))))")
+    roundtrip(
+        f"t:or_c(c:pk_k({dummy_pk()}),and_v(vc:pk_k({dummy_pk()}),or_c(c:pk_k({dummy_pk()}),v:hash160({dummy_h160()}))))"
+    )
+    roundtrip(
+        f"t:or_c(c:pk_k({dummy_pk()}),and_v(vc:pk_k({dummy_pk()}),or_c(c:pk_k({dummy_pk()}),v:sha256({dummy_h256()}))))"
+    )
     roundtrip(f"or_i(and_v(vc:pk_h({dummy_h160()}),hash256({dummy_h256()})),older(20))")
     roundtrip(f"andor(c:pk_k({dummy_pk()}),older(25),c:pk_k({dummy_pk()}))")
     roundtrip(
@@ -110,10 +118,13 @@ def test_simple_sanity_checks():
     roundtrip(
         f"or_d(multi(1,{dummy_pk()}),or_b(multi(3,{dummy_pk()},{dummy_pk()},{dummy_pk()}),su:after(50)))"
     )
-    # FIXME: doesn't roundtrip
-    # roundtrip(f"uuj:and_v(v:multi(2,{dummy_pk()},{dummy_pk()}),after(10))")
-    roundtrip(f"or_i(or_i(j:and_v(v:multi(2,{dummy_pk()},{dummy_pk()}),after(987)),0),0)")
-    roundtrip(f"or_b(or_i(n:multi(1,{dummy_pk()},{dummy_pk()}),0),a:or_i(0,older(1111)))")
+    roundtrip(f"uuj:and_v(v:multi(2,{dummy_pk()},{dummy_pk()}),after(10))")
+    roundtrip(
+        f"or_i(or_i(j:and_v(v:multi(2,{dummy_pk()},{dummy_pk()}),after(987)),0),0)"
+    )
+    roundtrip(
+        f"or_b(or_i(n:multi(1,{dummy_pk()},{dummy_pk()}),0),a:or_i(0,older(1111)))"
+    )
 
 
 def test_compat_valid():
@@ -136,6 +147,5 @@ def test_compat_invalid():
     )
     with open(invalid_samples, "r") as f:
         for line in f:
-            print(line)
             with pytest.raises(Exception):
                 Node.from_desc(line.strip())

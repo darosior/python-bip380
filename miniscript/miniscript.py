@@ -641,7 +641,7 @@ class Node:
         if tag == "u":
             return WrapU(*Node._parse_child_strings(child_exprs))
 
-        assert False  # TODO
+        assert False, (tag, child_exprs)  # TODO
 
     # TODO: have something like BuildScript from Core and get rid of the _script member.
     @property
@@ -978,6 +978,7 @@ class Hash160(Node):
 class Multi(Node):
     def __init__(self, k, keys):
         assert 1 <= k <= len(keys)
+        assert all(isinstance(k, MiniscriptKey) for k in keys)
 
         self.t = Fragment.MULTI
         self.k = k
@@ -986,7 +987,9 @@ class Multi(Node):
         self._script = [k, *[k.bytes() for k in keys], len(keys), OP_CHECKMULTISIG]
 
     def __repr__(self):
-        return f"multi({','.join([self.k] + self.keys)})"
+        return (
+            f"multi({','.join([str(self.k)] + [k.bytes().hex() for k in self.keys])})"
+        )
 
 
 class AndV(Node):
@@ -1016,7 +1019,7 @@ class AndV(Node):
         # TODO: satisfaction
 
     def __repr__(self):
-        return f"and_v({','.join(self.subs)})"
+        return f"and_v({','.join(map(str, self.subs))})"
 
 
 class AndB(Node):
@@ -1052,7 +1055,7 @@ class AndB(Node):
         # TODO: satisfaction
 
     def __repr__(self):
-        return f"and_b({','.join(self.subs)})"
+        return f"and_b({','.join(map(str, self.subs))})"
 
 
 class OrB(Node):
@@ -1083,7 +1086,7 @@ class OrB(Node):
         # TODO: satisfaction
 
     def __repr__(self):
-        return f"or_b({','.join(self.subs)})"
+        return f"or_b({','.join(map(str, self.subs))})"
 
 
 class OrC(Node):
@@ -1109,7 +1112,7 @@ class OrC(Node):
         # TODO: satisfaction
 
     def __repr__(self):
-        return f"or_c({','.join(self.subs)})"
+        return f"or_c({','.join(map(str, self.subs))})"
 
 
 class OrD(Node):
@@ -1139,7 +1142,7 @@ class OrD(Node):
         # TODO: satisfaction
 
     def __repr__(self):
-        return f"or_d({','.join(self.subs)})"
+        return f"or_d({','.join(map(str, self.subs))})"
 
 
 class OrI(Node):
@@ -1162,7 +1165,7 @@ class OrI(Node):
         self._script = [OP_IF, *sub_x._script, OP_ELSE, *sub_z._script, OP_ENDIF]
 
     def __repr__(self):
-        return f"or_i({','.join(self.subs)})"
+        return f"or_i({','.join(map(str, self.subs))})"
 
 
 class AndOr(Node):
@@ -1217,7 +1220,7 @@ class AndOr(Node):
         # TODO: satisfaction
 
     def __repr__(self):
-        return f"andor({','.join(self.subs)})"
+        return f"andor({','.join(map(str, self.subs))})"
 
 
 class AndN(AndOr):
@@ -1271,7 +1274,14 @@ class Thresh(Node):
         self._script += [k, OP_EQUAL]
 
     def __repr__(self):
-        return f"thresh({self.k},{''.join(self.subs)})"
+        return f"thresh({self.k},{','.join(map(str, self.subs))})"
+
+
+def is_wrapper(node):
+    """Whether the given node is a wrapper or not."""
+    return isinstance(
+        node, (WrapA, WrapS, WrapC, WrapD, WrapV, WrapJ, WrapL, WrapU, WrapT)
+    )
 
 
 class WrapA(Node):
@@ -1284,8 +1294,7 @@ class WrapA(Node):
         self._script = [OP_TOALTSTACK, *sub._script, OP_FROMALTSTACK]
 
     def __repr__(self):
-        # Avoid duplicating colons
-        if str(self.subs[0])[1] == ":":
+        if is_wrapper(self.subs[0]):
             return f"a{self.subs[0]}"
         return f"a:{self.subs[0]}"
 
@@ -1301,7 +1310,7 @@ class WrapS(Node):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if str(self.subs[0])[1] == ":":
+        if is_wrapper(self.subs[0]):
             return f"s{self.subs[0]}"
         return f"s:{self.subs[0]}"
 
@@ -1318,7 +1327,7 @@ class WrapC(Node):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if str(self.subs[0])[1] == ":":
+        if is_wrapper(self.subs[0]):
             return f"c{self.subs[0]}"
         return f"c:{self.subs[0]}"
 
@@ -1331,7 +1340,7 @@ class WrapT(AndV):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if str(self.subs[0])[1] == ":":
+        if is_wrapper(self.subs[0]):
             return f"t{self.subs[0]}"
         return f"t:{self.subs[0]}"
 
@@ -1347,7 +1356,7 @@ class WrapD(Node):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if str(self.subs[0])[1] == ":":
+        if is_wrapper(self.subs[0]):
             return f"d{self.subs[0]}"
         return f"d:{self.subs[0]}"
 
@@ -1370,7 +1379,7 @@ class WrapV(Node):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if str(self.subs[0])[1] == ":":
+        if is_wrapper(self.subs[0]):
             return f"v{self.subs[0]}"
         return f"v:{self.subs[0]}"
 
@@ -1386,7 +1395,7 @@ class WrapJ(Node):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if str(self.subs[0])[1] == ":":
+        if is_wrapper(self.subs[0]):
             return f"j{self.subs[0]}"
         return f"j:{self.subs[0]}"
 
@@ -1402,7 +1411,7 @@ class WrapN(Node):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if str(self.subs[0])[1] == ":":
+        if is_wrapper(self.subs[0]):
             return f"n{self.subs[0]}"
         return f"n:{self.subs[0]}"
 
@@ -1414,7 +1423,7 @@ class WrapL(OrI):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if str(self.subs[0])[1] == ":":
+        if is_wrapper(self.subs[0]):
             return f"l{self.subs[0]}"
         return f"l:{self.subs[0]}"
 
@@ -1426,6 +1435,6 @@ class WrapU(OrI):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if str(self.subs[0])[1] == ":":
+        if is_wrapper(self.subs[0]):
             return f"u{self.subs[0]}"
         return f"u:{self.subs[0]}"
