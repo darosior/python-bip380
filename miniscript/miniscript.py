@@ -91,7 +91,7 @@ def parse_term_single_elem(expr_list, idx):
     # Match against JUST_1 and JUST_0.
     if expr_list[idx] == 1:
         expr_list[idx] = Just1()
-    if expr_list[idx] == 0:
+    if expr_list[idx] == b"":
         expr_list[idx] = Just0()
 
 
@@ -161,7 +161,7 @@ def parse_term_7_elems(expr_list, idx):
     # Note how all the hashes are 7 elems because the VERIFY was decomposed
     # Match against sha256.
     if (
-        expr_list[idx : idx + 5] == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_SHA256]
+        expr_list[idx : idx + 5] == [OP_SIZE, b"\x20", OP_EQUAL, OP_VERIFY, OP_SHA256]
         and isinstance(expr_list[idx + 5], bytes)
         and len(expr_list[idx + 5]) == 32
         and expr_list[idx + 6] == OP_EQUAL
@@ -172,7 +172,7 @@ def parse_term_7_elems(expr_list, idx):
 
     # Match against hash256.
     if (
-        expr_list[idx : idx + 5] == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_HASH256]
+        expr_list[idx : idx + 5] == [OP_SIZE, b"\x20", OP_EQUAL, OP_VERIFY, OP_HASH256]
         and isinstance(expr_list[idx + 5], bytes)
         and len(expr_list[idx + 5]) == 32
         and expr_list[idx + 6] == OP_EQUAL
@@ -183,7 +183,7 @@ def parse_term_7_elems(expr_list, idx):
 
     # Match against ripemd160.
     if (
-        expr_list[idx : idx + 5] == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_RIPEMD160]
+        expr_list[idx : idx + 5] == [OP_SIZE, b"\x20", OP_EQUAL, OP_VERIFY, OP_RIPEMD160]
         and isinstance(expr_list[idx + 5], bytes)
         and len(expr_list[idx + 5]) == 20
         and expr_list[idx + 6] == OP_EQUAL
@@ -194,7 +194,7 @@ def parse_term_7_elems(expr_list, idx):
 
     # Match against hash160.
     if (
-        expr_list[idx : idx + 5] == [OP_SIZE, 32, OP_EQUAL, OP_VERIFY, OP_HASH160]
+        expr_list[idx : idx + 5] == [OP_SIZE, b"\x20", OP_EQUAL, OP_VERIFY, OP_HASH160]
         and isinstance(expr_list[idx + 5], bytes)
         and len(expr_list[idx + 5]) == 20
         and expr_list[idx + 6] == OP_EQUAL
@@ -452,6 +452,23 @@ def parse_nonterm_6_elems(expr_list, idx):
         return expr_list
 
 
+def decompose_script(script):
+    """Create a list of Script element from a CScript, decomposing the compact
+    -VERIFY opcodes into the non-VERIFY OP and an OP_VERIFY.
+    """
+    elems = []
+    for elem in script:
+        if elem == OP_CHECKSIGVERIFY:
+            elems += [OP_CHECKSIG, OP_VERIFY]
+        elif elem == OP_CHECKMULTISIGVERIFY:
+            elems += [OP_CHECKMULTISIG, OP_VERIFY]
+        elif elem == OP_EQUALVERIFY:
+            elems += [OP_EQUAL, OP_VERIFY]
+        else:
+            elems.append(elem)
+    return elems
+
+
 class Node:
     """A Miniscript fragment."""
 
@@ -584,23 +601,13 @@ class Node:
         return CScript(self._script)
 
     @staticmethod
-    def from_script(c_script):
+    def from_script(script):
         """Construct miniscript node from script"""
-        # FIXME: avoid looping 45678 times ..
-        expr_list = []
-        for op in c_script:
-            # Encode 0, 20, 32 as int.
-            if op in [b"", b"\x14", b"\x20"]:
-                op_int = int.from_bytes(op, byteorder="big")
-                expr_list.append(op_int)
-            else:
-                expr_list.append(op)
-
         # Decompose script:
         # OP_CHECKSIGVERIFY > OP_CHECKSIG + OP_VERIFY
         # OP_CHECKMULTISIGVERIFY > OP_CHECKMULTISIG + OP_VERIFY
         # OP_EQUALVERIFY > OP_EQUAL + OP_VERIFY
-        expr_list = Node._decompose_script(expr_list)
+        expr_list = decompose_script(script)
         expr_list_len = len(expr_list)
 
         # Parse for terminal expressions.
@@ -724,27 +731,6 @@ class Node:
             return tag, sub_exprs
         else:
             raise Exception("Malformed miniscript string.")
-
-    @staticmethod
-    def _decompose_script(expr_list):
-        idx = 0
-        while idx < len(expr_list):
-            if expr_list[idx] == OP_CHECKSIGVERIFY:
-                expr_list = (
-                    expr_list[:idx] + [OP_CHECKSIG, OP_VERIFY] + expr_list[idx + 1 :]
-                )
-            elif expr_list[idx] == OP_CHECKMULTISIGVERIFY:
-                expr_list = (
-                    expr_list[:idx]
-                    + [OP_CHECKMULTISIG, OP_VERIFY]
-                    + expr_list[idx + 1 :]
-                )
-            elif expr_list[idx] == OP_EQUALVERIFY:
-                expr_list = (
-                    expr_list[:idx] + [OP_EQUAL, OP_VERIFY] + expr_list[idx + 1 :]
-                )
-            idx += 1
-        return expr_list
 
 
 class Just0(Node):
