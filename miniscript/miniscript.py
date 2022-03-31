@@ -52,39 +52,6 @@ def hash160(data):
     return hashlib.new("ripemd160", sha2).digest()
 
 
-class Fragment(Enum):
-    JUST_0 = 0
-    JUST_1 = 1
-    PK_K = 2
-    PK_H = 3
-    OLDER = 4
-    AFTER = 5
-    SHA256 = 6
-    HASH256 = 7
-    RIPEMD160 = 8
-    HASH160 = 9
-    WRAP_A = 10
-    WRAP_S = 11
-    WRAP_C = 12
-    WRAP_T = 13
-    WRAP_D = 14
-    WRAP_V = 15
-    WRAP_J = 16
-    WRAP_N = 17
-    WRAP_U = 18
-    WRAP_L = 19
-    AND_V = 20
-    AND_B = 21
-    AND_N = 22
-    OR_B = 23
-    OR_C = 24
-    OR_D = 25
-    OR_I = 26
-    ANDOR = 27
-    THRESH = 28
-    MULTI = 29
-
-
 class MiniscriptNodeCreationError(ValueError):
     def __init__(self, message):
         self.message = message
@@ -100,9 +67,9 @@ def stack_item_to_int(item):
         return read_script_number(item)
 
     if isinstance(item, Node):
-        if item.t == Fragment.JUST_1:
+        if isinstance(item, Just1):
             return 1
-        if item.t == Fragment.JUST_0:
+        if isinstance(item, Just0):
             return 0
 
     if isinstance(item, int):
@@ -252,7 +219,7 @@ def parse_nonterm_2_elems(expr_list, idx):
         # Match against and_v.
         if isinstance(elem_b, Node) and elem_a.p.V and elem_b.p.has_any("BKV"):
             # Is it a special case of t: wrapper?
-            if elem_b.t == Fragment.JUST_1:
+            if isinstance(elem_b, Just1):
                 node = WrapT(elem_a)
             else:
                 node = AndV(elem_a, elem_b)
@@ -439,7 +406,12 @@ def parse_nonterm_5_elems(expr_list, idx):
         and it_d.p.has_any("BKV")
         and it_e == OP_ENDIF
     ):
-        node = OrI(it_b, it_d)
+        if isinstance(it_b, Just0):
+            node = WrapL(it_d)
+        elif isinstance(it_d, Just0):
+            node = WrapU(it_b)
+        else:
+            node = OrI(it_b, it_d)
         expr_list[idx : idx + 5] = [node]
         return expr_list
 
@@ -450,31 +422,6 @@ def parse_nonterm_5_elems(expr_list, idx):
         and it_e == OP_ENDIF
     ):
         node = WrapJ(expr_list[idx + 3])
-        expr_list[idx : idx + 5] = [node]
-        return expr_list
-
-    # Match against l wrapper.
-    if (
-        it_a == OP_IF
-        and isinstance(it_b, Node)
-        and it_b.t == Fragment.JUST_0
-        and it_c == OP_ELSE
-        and isinstance(it_d, Node)
-        and it_d.p.has_any("BKV")
-        and it_e == OP_ENDIF
-    ):
-        node = WrapL(it_d)
-        expr_list[idx : idx + 5] = [node]
-        return expr_list
-
-    # Match against u wrapper.
-    if (
-        it_a == OP_IF
-        and isinstance(it_b, Node)
-        and it_b.p.has_any("BKV")
-        and [it_c, it_d, it_e] == [OP_ELSE, 0, OP_ENDIF]
-    ):
-        node = WrapU(it_b)
         expr_list[idx : idx + 5] = [node]
         return expr_list
 
@@ -518,7 +465,6 @@ class Node:
         # TODO: rename (or remove..)
         self.desc = ""
         self.children = None
-        self.t = None
         self.p = None
         self._k = None
         self._pk_k = []
@@ -527,7 +473,7 @@ class Node:
         self._script = []
 
     def __repr__(self):
-        return f"{self.t}(k = {self._k}, pk_k = {[k.hex() for k in self._pk_k]}, pk_h = {self._pk_h})"
+        return f"(k = {self._k}, pk_k = {[k.hex() for k in self._pk_k]}, pk_h = {self._pk_h})"
 
     # TODO: rename..
     @staticmethod
@@ -816,7 +762,6 @@ class Just0(Node):
     def __init__(self):
         Node.__init__(self)
 
-        self.t = Fragment.JUST_0
         self.p = Property("Bzudems")
         self._script = [OP_0]
 
@@ -828,7 +773,6 @@ class Just1(Node):
     def __init__(self):
         Node.__init__(self)
 
-        self.t = Fragment.JUST_1
         self.p = Property("Bzufm")
         self._script = [OP_1]
 
@@ -847,7 +791,6 @@ class PkNode(Node):
         else:
             raise MiniscriptNodeCreationError("Invalid pubkey for pk_k node")
 
-        self.t = Fragment.PK_K
         self.p = Property("Konudems")
         self._script = [self.pubkey.bytes()]
 
@@ -875,7 +818,6 @@ class PkhNode(Node):
         else:
             raise MiniscriptNodeCreationError("Invalid pubkey or hash for pk_h node")
 
-        self.t = Fragment.PK_H
         self.p = Property("Knudems")
         self._script = [OP_DUP, OP_HASH160, self.pk_hash(), OP_EQUALVERIFY]
 
@@ -902,7 +844,6 @@ class Older(Node):
         assert value > 0 and value < 2 ** 31
 
         self.value = value
-        self.t = Fragment.OLDER
         self.p = Property("Bzmf")
         self._script = [self.value, OP_CHECKSEQUENCEVERIFY]
 
@@ -915,7 +856,6 @@ class After(Node):
         assert value > 0 and value < 2 ** 31
 
         self.value = value
-        self.t = Fragment.AFTER
         self.p = Property("Bzmf")
         self._script = [self.value, OP_CHECKLOCKTIMEVERIFY]
 
@@ -928,7 +868,6 @@ class Sha256(Node):
         assert isinstance(digest, bytes) and len(digest) == 32
 
         self.digest = digest
-        self.t = Fragment.SHA256
         self.p = Property("Bonudm")
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_SHA256, digest, OP_EQUAL]
 
@@ -941,7 +880,6 @@ class Hash256(Node):
         assert isinstance(digest, bytes) and len(digest) == 32
 
         self.digest = digest
-        self.t = Fragment.HASH256
         self.p = Property("Bonudm")
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH256, digest, OP_EQUAL]
 
@@ -954,7 +892,6 @@ class Ripemd160(Node):
         assert isinstance(digest, bytes) and len(digest) == 20
 
         self.digest = digest
-        self.t = Fragment.RIPEMD160
         self.p = Property("Bonudm")
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, digest, OP_EQUAL]
 
@@ -967,7 +904,6 @@ class Hash160(Node):
         assert isinstance(digest, bytes) and len(digest) == 20
 
         self.digest = digest
-        self.t = Fragment.HASH160
         self.p = Property("Bonudm")
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH160, digest, OP_EQUAL]
 
@@ -980,7 +916,6 @@ class Multi(Node):
         assert 1 <= k <= len(keys)
         assert all(isinstance(k, MiniscriptKey) for k in keys)
 
-        self.t = Fragment.MULTI
         self.k = k
         self.keys = keys
         self.p = Property("Bndu")
@@ -998,7 +933,6 @@ class AndV(Node):
         assert child_y.p.has_any("BKV")
 
         # FIXME: don't use properties for malleability tracking
-        self.t = Fragment.AND_V
         self.p = Property(
             child_y.p.type()
             + ("z" if child_x.p.z and child_y.p.z else "")
@@ -1027,7 +961,6 @@ class AndB(Node):
         assert child_x.p.B and child_y.p.W
 
         # FIXME: don't use properties for malleability tracking
-        self.t = Fragment.AND_B
         self.p = Property(
             "Bu"
             + ("z" if child_x.p.z and child_y.p.z else "")
@@ -1063,7 +996,6 @@ class OrB(Node):
         assert sub_x.p.has_all("Bd")
         assert sub_z.p.has_all("Wd")
 
-        self.t = Fragment.OR_B
         self.p = Property(
             "Bdu"
             + ("z" if sub_x.p.z and sub_z.p.z else "")
@@ -1093,7 +1025,6 @@ class OrC(Node):
     def __init__(self, sub_x, sub_z):
         assert sub_x.p.has_all("Bdu") and sub_z.p.V
 
-        self.t = Fragment.OR_C
         self.p = Property(
             "V"
             + ("z" if sub_x.p.z and sub_z.p.z else "")
@@ -1120,7 +1051,6 @@ class OrD(Node):
         assert sub_x.p.has_all("Bdu")
         assert sub_z.p.has_all("B")
 
-        self.t = Fragment.OR_D
         self.p = Property(
             "B"
             + ("z" if sub_x.p.z and sub_z.p.z else "")
@@ -1149,7 +1079,6 @@ class OrI(Node):
     def __init__(self, sub_x, sub_z):
         assert sub_x.p.type() == sub_z.p.type() and sub_x.p.has_any("BKV")
 
-        self.t = Fragment.OR_I
         self.p = Property(
             sub_x.p.type()
             + ("o" if sub_x.p.z and sub_z.p.z else "")
@@ -1174,7 +1103,6 @@ class AndOr(Node):
         assert child_x.p.has_all("Bdu")
         assert child_y.p.type() == child_z.p.type() and child_y.p.has_any("BKV")
 
-        self.t = Fragment.ANDOR
         self.p = Property(
             child_y.p.type()
             + ("z" if child_x.p.z and child_y.p.z and child_z.p.z else "")
@@ -1257,7 +1185,6 @@ class Thresh(Node):
             if sub.p.s:
                 s_count += 1
 
-        self.t = Fragment.THRESH
         self.p = Property(
             "B"
             + ("z" if all_z else "")
@@ -1288,7 +1215,6 @@ class WrapA(Node):
     def __init__(self, sub):
         assert sub.p.B
 
-        self.t = Fragment.WRAP_A
         self.p = Property("W" + "".join(c for c in "udfems" if getattr(sub.p, c)))
         self.subs = [sub]
         self._script = [OP_TOALTSTACK, *sub._script, OP_FROMALTSTACK]
@@ -1303,7 +1229,6 @@ class WrapS(Node):
     def __init__(self, sub):
         assert sub.p.has_all("Bo")
 
-        self.t = Fragment.WRAP_S
         self.p = Property("W" + "".join(c for c in "udfems" if getattr(sub.p, c)))
         self.subs = [sub]
         self._script = [OP_SWAP, *sub._script]
@@ -1319,7 +1244,6 @@ class WrapC(Node):
     def __init__(self, sub):
         assert sub.p.K
 
-        self.t = Fragment.WRAP_C
         # FIXME: shouldn't n and d be default props on the website?
         self.p = Property("Bsndu" + ("o" if sub.p.o else ""))
         self.subs = [sub]
@@ -1336,7 +1260,6 @@ class WrapC(Node):
 class WrapT(AndV):
     def __init__(self, sub):
         AndV.__init__(self, sub, Just1())
-        self.t = Fragment.WRAP_T
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -1349,7 +1272,6 @@ class WrapD(Node):
     def __init__(self, sub):
         assert sub.p.has_all("Vz")
 
-        self.t = Fragment.WRAP_D
         self.p = Property("Bondu" + "".join(c for c in "ems" if getattr(sub.p, c)))
         self.subs = [sub]
         self._script = [OP_DUP, OP_IF, *sub._script, OP_ENDIF]
@@ -1365,7 +1287,6 @@ class WrapV(Node):
     def __init__(self, sub):
         assert sub.p.B
 
-        self.t = Fragment.WRAP_V
         self.p = Property("Vf" + "".join(c for c in "zonems" if getattr(sub.p, c)))
         self.subs = [sub]
         if sub._script[-1] == OP_CHECKSIG:
@@ -1388,7 +1309,6 @@ class WrapJ(Node):
     def __init__(self, sub):
         assert sub.p.has_all("Bn")
 
-        self.t = Fragment.WRAP_J
         self.p = Property("Bnd" + "".join(c for c in "ouems" if getattr(sub.p, c)))
         self.subs = [sub]
         self._script = [OP_SIZE, OP_0NOTEQUAL, OP_IF, *sub._script, OP_ENDIF]
@@ -1404,7 +1324,6 @@ class WrapN(Node):
     def __init__(self, sub):
         assert sub.p.B
 
-        self.t = Fragment.WRAP_J
         self.p = Property("Bu" + "".join(c for c in "zondfems" if getattr(sub.p, c)))
         self.subs = [sub]
         self._script = [*sub._script, OP_0NOTEQUAL]
@@ -1419,7 +1338,6 @@ class WrapN(Node):
 class WrapL(OrI):
     def __init__(self, sub):
         OrI.__init__(self, Just0(), sub)
-        self.t = Fragment.WRAP_L
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -1431,7 +1349,6 @@ class WrapL(OrI):
 class WrapU(OrI):
     def __init__(self, sub):
         OrI.__init__(self, sub, Just0())
-        self.t = Fragment.WRAP_U
 
     def __repr__(self):
         # Avoid duplicating colons
