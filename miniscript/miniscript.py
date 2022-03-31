@@ -493,13 +493,12 @@ class Node:
             return PkhNode(keyhash_b)
 
         if tag == "older":
-            n = int(sub_exprs[0])
-            return Older(n)
+            value = int(sub_exprs[0])
+            return Older(value)
 
         if tag == "after":
-            # FIXME: rename
-            time = int(sub_exprs[0])
-            return After(time)
+            value = int(sub_exprs[0])
+            return After(value)
 
         if tag in ["sha256", "hash256", "ripemd160", "hash160"]:
             digest = bytes.fromhex(sub_exprs[0])
