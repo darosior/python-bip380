@@ -458,11 +458,10 @@ class Node:
     """A Miniscript fragment."""
 
     def __init__(self):
-        self.children = None
+        # The fragment's type and properties
         self.p = None
-        self._k = None
-        self._pk_k = []
-        self._pk_h = []
+        # List of all sub fragments
+        self.subs = []
         # A list of Script elements, a CScript is created all at once in the script() method.
         self._script = []
 
