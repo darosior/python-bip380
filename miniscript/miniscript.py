@@ -5,8 +5,6 @@
 """Classes and methods to encode and decode miniscripts"""
 import hashlib
 
-from enum import Enum
-
 from .key import MiniscriptKey
 from .property import Property
 from .script import (
