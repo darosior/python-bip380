@@ -469,7 +469,7 @@ class Node:
     @staticmethod
     def from_str(string):
         """Construct miniscript node from string representation"""
-        tag, child_exprs = Node._parse_string(string)
+        tag, sub_exprs = Node._parse_string(string)
         k = None
 
         if tag == "0":
@@ -479,30 +479,30 @@ class Node:
             return Just1()
 
         if tag == "pk":
-            return WrapC(PkNode(child_exprs[0]))
+            return WrapC(PkNode(sub_exprs[0]))
 
         if tag == "pk_k":
-            return PkNode(child_exprs[0])
+            return PkNode(sub_exprs[0])
 
         if tag == "pkh":
-            keyhash = bytes.fromhex(child_exprs[0])
+            keyhash = bytes.fromhex(sub_exprs[0])
             return WrapC(PkhNode(keyhash))
 
         if tag == "pk_h":
-            keyhash_b = bytes.fromhex(child_exprs[0])
+            keyhash_b = bytes.fromhex(sub_exprs[0])
             return PkhNode(keyhash_b)
 
         if tag == "older":
-            n = int(child_exprs[0])
+            n = int(sub_exprs[0])
             return Older(n)
 
         if tag == "after":
             # FIXME: rename
-            time = int(child_exprs[0])
+            time = int(sub_exprs[0])
             return After(time)
 
         if tag in ["sha256", "hash256", "ripemd160", "hash160"]:
-            digest = bytes.fromhex(child_exprs[0])
+            digest = bytes.fromhex(sub_exprs[0])
             if tag == "sha256":
                 return Sha256(digest)
             if tag == "hash256":
@@ -512,72 +512,72 @@ class Node:
             return Hash160(digest)
 
         if tag == "multi":
-            k = int(child_exprs.pop(0))
+            k = int(sub_exprs.pop(0))
             key_n = []
-            for child_expr in child_exprs:
-                key_obj = MiniscriptKey(child_expr)
+            for sub_expr in sub_exprs:
+                key_obj = MiniscriptKey(sub_expr)
                 key_n.append(key_obj)
             return Multi(k, key_n)
 
         if tag == "and_v":
-            return AndV(*Node._parse_child_strings(child_exprs))
+            return AndV(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "and_b":
-            return AndB(*Node._parse_child_strings(child_exprs))
+            return AndB(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "and_n":
-            return AndN(*Node._parse_child_strings(child_exprs))
+            return AndN(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "or_b":
-            return OrB(*Node._parse_child_strings(child_exprs))
+            return OrB(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "or_c":
-            return OrC(*Node._parse_child_strings(child_exprs))
+            return OrC(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "or_d":
-            return OrD(*Node._parse_child_strings(child_exprs))
+            return OrD(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "or_i":
-            return OrI(*Node._parse_child_strings(child_exprs))
+            return OrI(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "andor":
-            return AndOr(*Node._parse_child_strings(child_exprs))
+            return AndOr(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "thresh":
-            k = int(child_exprs.pop(0))
-            return Thresh(k, Node._parse_child_strings(child_exprs))
+            k = int(sub_exprs.pop(0))
+            return Thresh(k, Node._parse_sub_strings(sub_exprs))
 
         if tag == "a":
-            return WrapA(*Node._parse_child_strings(child_exprs))
+            return WrapA(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "s":
-            return WrapS(*Node._parse_child_strings(child_exprs))
+            return WrapS(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "c":
-            return WrapC(*Node._parse_child_strings(child_exprs))
+            return WrapC(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "t":
-            return WrapT(*Node._parse_child_strings(child_exprs))
+            return WrapT(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "d":
-            return WrapD(*Node._parse_child_strings(child_exprs))
+            return WrapD(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "v":
-            return WrapV(*Node._parse_child_strings(child_exprs))
+            return WrapV(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "j":
-            return WrapJ(*Node._parse_child_strings(child_exprs))
+            return WrapJ(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "n":
-            return WrapN(*Node._parse_child_strings(child_exprs))
+            return WrapN(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "l":
-            return WrapL(*Node._parse_child_strings(child_exprs))
+            return WrapL(*Node._parse_sub_strings(sub_exprs))
 
         if tag == "u":
-            return WrapU(*Node._parse_child_strings(child_exprs))
+            return WrapU(*Node._parse_sub_strings(sub_exprs))
 
-        assert False, (tag, child_exprs)  # TODO
+        assert False, (tag, sub_exprs)  # TODO
 
     # TODO: have something like BuildScript from Core and get rid of the _script member.
     @property
@@ -687,22 +687,22 @@ class Node:
         raise Exception("Malformed miniscript")
 
     @staticmethod
-    def _parse_child_strings(child_exprs):
-        child_nodes = []
-        for string in child_exprs:
-            child_nodes.append(Node.from_str(string))
-        return child_nodes
+    def _parse_sub_strings(sub_exprs):
+        sub_nodes = []
+        for string in sub_exprs:
+            sub_nodes.append(Node.from_str(string))
+        return sub_nodes
 
     @staticmethod
     def _parse_string(string):
         string = "".join(string.split())
         tag = ""
-        child_exprs = []
+        sub_exprs = []
         depth = 0
 
         for idx, ch in enumerate(string):
             if (ch == "0" or ch == "1") and len(string) == 1:
-                return ch, child_exprs
+                return ch, sub_exprs
             if ch == ":" and depth == 0:
                 # Discern between 1 or two wrappers.
                 if idx == 1:
@@ -717,12 +717,12 @@ class Node:
             if ch == ")":
                 depth -= 1
                 if depth == 0:
-                    child_exprs.append(string[prev_idx + 1 : idx])
+                    sub_exprs.append(string[prev_idx + 1 : idx])
             if ch == "," and depth == 1:
-                child_exprs.append(string[prev_idx + 1 : idx])
+                sub_exprs.append(string[prev_idx + 1 : idx])
                 prev_idx = idx
-        if depth == 0 and bool(tag) and bool(child_exprs):
-            return tag, child_exprs
+        if depth == 0 and bool(tag) and bool(sub_exprs):
+            return tag, sub_exprs
         else:
             raise Exception("Malformed miniscript string.")
 
@@ -918,28 +918,28 @@ class Multi(Node):
 
 
 class AndV(Node):
-    def __init__(self, child_x, child_y):
-        assert child_x.p.V
-        assert child_y.p.has_any("BKV")
+    def __init__(self, sub_x, sub_y):
+        assert sub_x.p.V
+        assert sub_y.p.has_any("BKV")
 
         # FIXME: don't use properties for malleability tracking
         self.p = Property(
-            child_y.p.type()
-            + ("z" if child_x.p.z and child_y.p.z else "")
+            sub_y.p.type()
+            + ("z" if sub_x.p.z and sub_y.p.z else "")
             + (
                 "o"
-                if child_x.p.z and child_y.p.o or child_x.p.o and child_y.p.z
+                if sub_x.p.z and sub_y.p.o or sub_x.p.o and sub_y.p.z
                 else ""
             )
-            + ("n" if child_x.p.n or child_x.p.z and child_y.p.n else "")
-            + ("u" if child_y.p.u else "")
-            + ("f" if child_y.p.f or child_x.p.s else "")
-            + ("s" if child_x.p.s or child_y.p.s else "")
-            + ("m" if child_x.p.m and child_y.p.m else "")
+            + ("n" if sub_x.p.n or sub_x.p.z and sub_y.p.n else "")
+            + ("u" if sub_y.p.u else "")
+            + ("f" if sub_y.p.f or sub_x.p.s else "")
+            + ("s" if sub_x.p.s or sub_y.p.s else "")
+            + ("m" if sub_x.p.m and sub_y.p.m else "")
         )
-        self.subs = [child_x, child_y]
+        self.subs = [sub_x, sub_y]
 
-        self._script = child_x._script + child_y._script
+        self._script = sub_x._script + sub_y._script
         # TODO: satisfaction
 
     def __repr__(self):
@@ -947,34 +947,34 @@ class AndV(Node):
 
 
 class AndB(Node):
-    def __init__(self, child_x, child_y):
-        assert child_x.p.B and child_y.p.W
+    def __init__(self, sub_x, sub_y):
+        assert sub_x.p.B and sub_y.p.W
 
         # FIXME: don't use properties for malleability tracking
         self.p = Property(
             "Bu"
-            + ("z" if child_x.p.z and child_y.p.z else "")
+            + ("z" if sub_x.p.z and sub_y.p.z else "")
             + (
                 "o"
-                if child_x.p.z and child_y.p.o or child_x.p.o and child_y.p.z
+                if sub_x.p.z and sub_y.p.o or sub_x.p.o and sub_y.p.z
                 else ""
             )
-            + ("n" if child_x.p.n or child_x.p.z and child_y.p.n else "")
-            + ("d" if child_x.p.d and child_y.p.d else "")
-            + ("u" if child_y.p.u else "")
+            + ("n" if sub_x.p.n or sub_x.p.z and sub_y.p.n else "")
+            + ("d" if sub_x.p.d and sub_y.p.d else "")
+            + ("u" if sub_y.p.u else "")
             + (
                 "f"
-                if child_x.p.f
-                and child_y.p.f
-                or any(c.p.has_all("sf") for c in [child_x, child_y])
+                if sub_x.p.f
+                and sub_y.p.f
+                or any(c.p.has_all("sf") for c in [sub_x, sub_y])
                 else ""
             )
-            + ("s" if child_x.p.s or child_y.p.s else "")
-            + ("m" if child_x.p.m and child_y.p.m else "")
+            + ("s" if sub_x.p.s or sub_y.p.s else "")
+            + ("m" if sub_x.p.m and sub_y.p.m else "")
         )
-        self.subs = [child_x, child_y]
+        self.subs = [sub_x, sub_y]
 
-        self._script = [*child_x._script, *child_y._script, OP_BOOLAND]
+        self._script = [*sub_x._script, *sub_y._script, OP_BOOLAND]
         # TODO: satisfaction
 
     def __repr__(self):
@@ -1088,51 +1088,50 @@ class OrI(Node):
 
 
 class AndOr(Node):
-    # FIXME: rename all 'child' to 'sub'
-    def __init__(self, child_x, child_y, child_z):
-        assert child_x.p.has_all("Bdu")
-        assert child_y.p.type() == child_z.p.type() and child_y.p.has_any("BKV")
+    def __init__(self, sub_x, sub_y, sub_z):
+        assert sub_x.p.has_all("Bdu")
+        assert sub_y.p.type() == sub_z.p.type() and sub_y.p.has_any("BKV")
 
         self.p = Property(
-            child_y.p.type()
-            + ("z" if child_x.p.z and child_y.p.z and child_z.p.z else "")
+            sub_y.p.type()
+            + ("z" if sub_x.p.z and sub_y.p.z and sub_z.p.z else "")
             + (
                 "o"
-                if child_x.p.z
-                and child_y.p.o
-                and child_z.p.o
-                or child_x.p.o
-                and child_y.p.z
-                and child_z.p.z
+                if sub_x.p.z
+                and sub_y.p.o
+                and sub_z.p.o
+                or sub_x.p.o
+                and sub_y.p.z
+                and sub_z.p.z
                 else ""
             )
-            + ("d" if child_z.p.d else "")
-            + ("u" if child_y.p.u and child_z.p.u else "")
-            + ("f" if child_z.p.f and (child_x.p.s or child_y.p.f) else "")
+            + ("d" if sub_z.p.d else "")
+            + ("u" if sub_y.p.u and sub_z.p.u else "")
+            + ("f" if sub_z.p.f and (sub_x.p.s or sub_y.p.f) else "")
             + (
                 "e"
-                if child_x.p.e and child_z.p.e and (child_x.p.s or child_y.p.f)
+                if sub_x.p.e and sub_z.p.e and (sub_x.p.s or sub_y.p.f)
                 else ""
             )
             + (
                 "m"
-                if child_x.p.m
-                and child_y.p.m
-                and child_z.p.m
-                and child_x.p.e
-                and (child_x.p.s or child_y.p.s or child_z.p.s)
+                if sub_x.p.m
+                and sub_y.p.m
+                and sub_z.p.m
+                and sub_x.p.e
+                and (sub_x.p.s or sub_y.p.s or sub_z.p.s)
                 else ""
             )
-            + ("s" if child_z.p.s and (child_x.p.s or child_y.p.s) else "")
+            + ("s" if sub_z.p.s and (sub_x.p.s or sub_y.p.s) else "")
         )
-        self.subs = [child_x, child_y, child_z]
+        self.subs = [sub_x, sub_y, sub_z]
 
         self._script = [
-            *child_x._script,
+            *sub_x._script,
             OP_NOTIF,
-            *child_z._script,
+            *sub_z._script,
             OP_ELSE,
-            *child_y._script,
+            *sub_y._script,
             OP_ENDIF,
         ]
         # TODO: satisfaction
