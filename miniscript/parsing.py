@@ -127,12 +127,11 @@ def parse_term_single_elem(expr_list, idx):
         expr_list[idx] = Just0()
 
 
-# TODO: these parse_term functions don't need to return the expr_list
 def parse_term_2_elems(expr_list, idx):
     """
     Try to parse a terminal node from two elements of {expr_list}, starting
     from {idx}.
-    Return the new expression list on success, None on error.
+    Return the new expression list on success, None if there was no match.
     """
     elem_a = expr_list[idx]
     elem_b = expr_list[idx + 1]
@@ -160,14 +159,12 @@ def parse_term_2_elems(expr_list, idx):
         expr_list[idx : idx + 2] = [node]
         return expr_list
 
-    return None
-
 
 def parse_term_5_elems(expr_list, idx):
     """
     Try to parse a terminal node from five elements of {expr_list}, starting
     from {idx}.
-    Return the new expression list on success, None on error.
+    Return the new expression list on success, None if there was no match.
     """
     # The only 3 items node is pk_h
     if expr_list[idx : idx + 2] != [OP_DUP, OP_HASH160]:
@@ -188,7 +185,7 @@ def parse_term_7_elems(expr_list, idx):
     """
     Try to parse a terminal node from seven elements of {expr_list}, starting
     from {idx}.
-    Return the new expression list on success, None on error.
+    Return the new expression list on success, None if there was no match.
     """
     # Note how all the hashes are 7 elems because the VERIFY was decomposed
     # Match against sha256.
@@ -241,7 +238,7 @@ def parse_nonterm_2_elems(expr_list, idx):
     """
     Try to parse a non-terminal node from two elements of {expr_list}, starting
     from {idx}.
-    Return the new expression list on success, None on error.
+    Return the new expression list on success, None if there was no match.
     """
     elem_a = expr_list[idx]
     elem_b = expr_list[idx + 1]
@@ -286,7 +283,7 @@ def parse_nonterm_3_elems(expr_list, idx):
     """
     Try to parse a non-terminal node from *at least* three elements of
     {expr_list}, starting from {idx}.
-    Return the new expression list on success, None on error.
+    Return the new expression list on success, None if there was no match.
     """
     elem_a = expr_list[idx]
     elem_b = expr_list[idx + 1]
@@ -352,7 +349,7 @@ def parse_nonterm_4_elems(expr_list, idx):
     """
     Try to parse a non-terminal node from at least four elements of {expr_list},
     starting from {idx}.
-    Return the new expression list on success, None on error.
+    Return the new expression list on success, None if there was no match.
     """
     (it_a, it_b, it_c, it_d) = expr_list[idx : idx + 4]
 
@@ -410,7 +407,7 @@ def parse_nonterm_5_elems(expr_list, idx):
     """
     Try to parse a non-terminal node from five elements of {expr_list}, starting
     from {idx}.
-    Return the new expression list on success, None on error.
+    Return the new expression list on success, None if there was no match.
     """
     (it_a, it_b, it_c, it_d, it_e) = expr_list[idx : idx + 5]
 
@@ -461,7 +458,7 @@ def parse_nonterm_6_elems(expr_list, idx):
     """
     Try to parse a non-terminal node from six elements of {expr_list}, starting
     from {idx}.
-    Return the new expression list on success, None on error.
+    Return the new expression list on success, None if there was no match.
     """
     (it_a, it_b, it_c, it_d, it_e, it_f) = expr_list[idx : idx + 6]
 
@@ -486,6 +483,7 @@ def parse_nonterm_6_elems(expr_list, idx):
 
 
 def parse_expr_list(expr_list):
+    """Parse a node from a list of Script elements."""
     # Every recursive call must progress the AST construction,
     # until it is complete (single root node remains).
     expr_list_len = len(expr_list)
@@ -493,15 +491,6 @@ def parse_expr_list(expr_list):
     # Root node reached.
     if expr_list_len == 1 and isinstance(expr_list[0], Node):
         return expr_list[0]
-
-    # Step through each list index and match against templates.
-
-    # Right - to - left parsing.
-    # Note: Parsing from script is ambiguous:
-    # r-to-l:
-    #    and_v(vc:pk_h(KEY),c:pk_h(KEY))
-    # l-to-r:
-    #   c:and_v(vc:pk_h(KEY),pk_h(KEY))
 
     # Step through each list index and match against templates.
     idx = expr_list_len - 1
@@ -544,7 +533,7 @@ def miniscript_from_script(script):
     expr_list = decompose_script(script)
     expr_list_len = len(expr_list)
 
-    # Parse for terminal expressions.
+    # We first parse terminal expressions.
     idx = 0
     while idx < expr_list_len:
         parse_term_single_elem(expr_list, idx)
@@ -569,7 +558,7 @@ def miniscript_from_script(script):
 
         idx += 1
 
-    # Construct AST recursively.
+    # And then recursively parse non-terminal ones.
     return parse_expr_list(expr_list)
 
 
