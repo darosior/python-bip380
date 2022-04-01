@@ -1,0 +1,6 @@
+*__pycache__*
+*venv*
+*tags*
+bip32.egg-info/
+build/
+dist/

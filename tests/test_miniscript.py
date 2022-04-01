@@ -3,7 +3,7 @@ import os
 import pytest
 
 from bip32 import BIP32
-from miniscript.miniscript import Node
+from miniscript import miniscript_from_str, miniscript_from_script
 
 
 def dummy_pk():
@@ -33,11 +33,11 @@ def roundtrip(ms_str):
     Note that the Script representation does not necessarily roundtrip. However
     it must be deterministic.
     """
-    node_a = Node.from_str(ms_str)
-    node_b = Node.from_script(node_a.script)
+    node_a = miniscript_from_str(ms_str)
+    node_b = miniscript_from_script(node_a.script)
 
-    assert node_b.script == Node.from_script(node_b.script).script
-    assert str(node_b) == str(Node.from_str(str(node_b)))
+    assert node_b.script == miniscript_from_script(node_b.script).script
+    assert str(node_b) == str(miniscript_from_str(str(node_b)))
 
     return node_b
 
@@ -45,10 +45,10 @@ def roundtrip(ms_str):
 def test_simple_sanity_checks():
     """Some quick and basic sanity checks of the implem. The place to add new findings."""
 
-    not_aliased = Node.from_str(
+    not_aliased = miniscript_from_str(
         "and_v(vc:pk_k(027a1b8c69c6a4e90ce85e0dd6fb99c51ef8af35b88f20f9f74f8f937f7acaec15),c:pk_k(023c110f0946ed6160ee95eee86efb79d13421d1b460f592b04dd21d74852d7631))"
     )
-    aliased = Node.from_str(
+    aliased = miniscript_from_str(
         "and_v(v:pk(027a1b8c69c6a4e90ce85e0dd6fb99c51ef8af35b88f20f9f74f8f937f7acaec15),pk(023c110f0946ed6160ee95eee86efb79d13421d1b460f592b04dd21d74852d7631))"
     )
     assert aliased.script == not_aliased.script
@@ -63,10 +63,10 @@ def test_simple_sanity_checks():
     assert roundtrip("after(1621038656)").value == 1621038656
     # CSV with a negative value
     with pytest.raises(Exception):
-        Node.from_script(b"\x86\x92\xB2")
+        miniscript_from_script(b"\x86\x92\xB2")
     # CLTV with a negative value
     with pytest.raises(Exception):
-        Node.from_script(b"\x86\x92\xB1")
+        miniscript_from_script(b"\x86\x92\xB1")
 
     roundtrip(f"pk({dummy_pk()})")
     roundtrip(f"pk_k({dummy_pk()})")
@@ -138,7 +138,7 @@ def test_compat_valid():
     with open(valid_samples, "r") as f:
         for line in f:
             ms, hexscript = line.strip().split(" ")
-            assert Node.from_str(ms).script.hex() == hexscript
+            assert miniscript_from_str(ms).script.hex() == hexscript
 
 
 def test_compat_invalid():
@@ -148,4 +148,4 @@ def test_compat_invalid():
     with open(invalid_samples, "r") as f:
         for line in f:
             with pytest.raises(Exception):
-                Node.from_str(line.strip())
+                miniscript_from_str(line.strip())
