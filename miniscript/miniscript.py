@@ -86,7 +86,7 @@ def parse_term_single_elem(expr_list, idx):
         and len(expr_list[idx]) == 33
         and expr_list[idx][0] in [2, 3]
     ):
-        expr_list[idx] = PkNode(expr_list[idx])
+        expr_list[idx] = Pk(expr_list[idx])
 
     # Match against JUST_1 and JUST_0.
     if expr_list[idx] == 1:
@@ -147,7 +147,7 @@ def parse_term_5_elems(expr_list, idx):
     if expr_list[idx + 3 : idx + 5] != [OP_EQUAL, OP_VERIFY]:
         return
 
-    node = PkhNode(expr_list[idx + 2])
+    node = Pkh(expr_list[idx + 2])
     expr_list[idx : idx + 5] = [node]
     return expr_list
 
@@ -298,7 +298,7 @@ def parse_nonterm_3_elems(expr_list, idx):
     keys = []
     i = idx + 1
     while idx < len(expr_list) - 2:
-        if not isinstance(expr_list[i], PkNode):
+        if not isinstance(expr_list[i], Pk):
             break
         keys.append(expr_list[i].pubkey)
         i += 1
@@ -507,18 +507,18 @@ class Node:
             return Just1()
 
         if tag == "pk":
-            return WrapC(PkNode(sub_exprs[0]))
+            return WrapC(Pk(sub_exprs[0]))
 
         if tag == "pk_k":
-            return PkNode(sub_exprs[0])
+            return Pk(sub_exprs[0])
 
         if tag == "pkh":
             keyhash = bytes.fromhex(sub_exprs[0])
-            return WrapC(PkhNode(keyhash))
+            return WrapC(Pkh(keyhash))
 
         if tag == "pk_h":
             keyhash_b = bytes.fromhex(sub_exprs[0])
-            return PkhNode(keyhash_b)
+            return Pkh(keyhash_b)
 
         if tag == "older":
             value = int(sub_exprs[0])
@@ -776,7 +776,8 @@ class Just1(Node):
         return "1"
 
 
-class PkNode(Node):
+# TODO: maybe have parent classes like "PkNode", "HashNode"
+class Pk(Node):
     def __init__(self, pubkey):
         Node.__init__(self)
 
@@ -798,7 +799,7 @@ class PkNode(Node):
         return f"pk_k({self.pubkey.bytes().hex()})"
 
 
-class PkhNode(Node):
+class Pkh(Node):
     def __init__(self, pk_or_pkh):
         Node.__init__(self)
 
