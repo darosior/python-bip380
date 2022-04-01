@@ -125,6 +125,7 @@ def test_simple_sanity_checks():
     roundtrip(
         f"or_b(or_i(n:multi(1,{dummy_pk()},{dummy_pk()}),0),a:or_i(0,older(1111)))"
     )
+    roundtrip(f"llllllllllllllllllllllllllllll:pk({dummy_pk()})")
 
 
 def test_compat_valid():

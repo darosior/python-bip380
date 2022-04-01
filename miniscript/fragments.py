@@ -771,9 +771,9 @@ class WrapL(OrI):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if is_wrapper(self.subs[0]):
-            return f"l{self.subs[0]}"
-        return f"l:{self.subs[0]}"
+        if is_wrapper(self.subs[1]):
+            return f"l{self.subs[1]}"
+        return f"l:{self.subs[1]}"
 
 
 class WrapU(OrI):

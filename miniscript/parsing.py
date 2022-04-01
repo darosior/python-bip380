@@ -573,153 +573,199 @@ def miniscript_from_script(script):
     return parse_expr_list(expr_list)
 
 
-def parse_string(string):
-    string = "".join(string.split())  # FIXME
-    tag = ""
-    sub_exprs = []
-    depth = 0
+def split_params(string):
+    """Read a list of values before the next ')'. Split the result by comma."""
+    i = string.find(")")
+    assert i >= 0
 
-    for idx, ch in enumerate(string):
-        if (ch == "0" or ch == "1") and len(string) == 1:
-            return ch, sub_exprs
-        if ch == ":" and depth == 0:
-            # Discern between 1 or two wrappers. FIXME
-            if idx == 1:
-                return string[0], [string[2:]]
-            else:
-                return string[0], [string[1:]]
-        if ch == "(":
-            depth += 1
-            if depth == 1:
-                tag = string[:idx]
-                prev_idx = idx
-        if ch == ")":
-            depth -= 1
-            if depth == 0:
-                sub_exprs.append(string[prev_idx + 1 : idx])
-        if ch == "," and depth == 1:
-            sub_exprs.append(string[prev_idx + 1 : idx])
-            prev_idx = idx
-    if depth == 0 and bool(tag) and bool(sub_exprs):
-        return tag, sub_exprs
+    params, remaining = string[:i], string[i:]
+    if len(remaining) > 0:
+        return params.split(","), remaining[1:]
     else:
-        raise Exception("Malformed miniscript string.")
+        return params.split(","), ""
 
 
-def parse_sub_strings(sub_exprs):
-    sub_nodes = []
-    for string in sub_exprs:
-        sub_nodes.append(miniscript_from_str(string))
-    return sub_nodes
+def parse_many(string):
+    """Read a list of nodes before the next ')'."""
+    subs = []
+    remaining = string
+    while True:
+        sub, remaining = parse_one(remaining)
+        subs.append(sub)
+        if remaining[0] == ")":
+            return subs, remaining[1:]
+        assert remaining[0] == ","  # TODO: real errors
+        remaining = remaining[1:]
+
+
+def parse_one_num(string):
+    """Read an integer before the next comma."""
+    i = string.find(",")
+    assert i >= 0
+
+    return int(string[:i]), string[i + 1 :]
+
+
+def parse_one(string):
+    """Read a node and its subs recursively from a string.
+    Returns the node and the part of the string not consumed.
+    """
+
+    # We special case Just1 and Just0 since they are the only one which don't
+    # have a function syntax.
+    if string[0] == "0":
+        return Just0(), string[1:]
+    if string[0] == "1":
+        return Just1(), string[1:]
+
+    # Now, find the separator for all functions.
+    for i, char in enumerate(string):
+        if char in ["(", ":"]:
+            break
+    # For wrappers, we may have many of them.
+    if char == ":" and i > 1:
+        tag, remaining = string[0], string[1:]
+    else:
+        tag, remaining = string[:i], string[i + 1 :]
+
+    # Wrappers
+    if char == ":":
+        sub, remaining = parse_one(remaining)
+        if tag == "a":
+            return WrapA(sub), remaining
+
+        if tag == "s":
+            return WrapS(sub), remaining
+
+        if tag == "c":
+            return WrapC(sub), remaining
+
+        if tag == "t":
+            return WrapT(sub), remaining
+
+        if tag == "d":
+            return WrapD(sub), remaining
+
+        if tag == "v":
+            return WrapV(sub), remaining
+
+        if tag == "j":
+            return WrapJ(sub), remaining
+
+        if tag == "n":
+            return WrapN(sub), remaining
+
+        if tag == "l":
+            return WrapL(sub), remaining
+
+        if tag == "u":
+            return WrapU(sub), remaining
+
+        assert False, (tag, sub, remaining)  # TODO: real errors
+
+    # Terminal elements other than 0 and 1
+    if tag in [
+        "pk",
+        "pkh",
+        "pk_k",
+        "pk_h",
+        "sha256",
+        "hash256",
+        "ripemd160",
+        "hash160",
+        "older",
+        "after",
+        "multi",
+    ]:
+        params, remaining = split_params(remaining)
+
+        if tag == "0":
+            return Just0(), remaining
+
+        if tag == "1":
+            return Just1(), remaining
+
+        if tag == "pk":
+            return WrapC(Pk(params[0])), remaining
+
+        if tag == "pk_k":
+            return Pk(params[0]), remaining
+
+        if tag == "pkh":
+            keyhash = bytes.fromhex(params[0])
+            return WrapC(Pkh(keyhash)), remaining
+
+        if tag == "pk_h":
+            keyhash_b = bytes.fromhex(params[0])
+            return Pkh(keyhash_b), remaining
+
+        if tag == "older":
+            value = int(params[0])
+            return Older(value), remaining
+
+        if tag == "after":
+            value = int(params[0])
+            return After(value), remaining
+
+        if tag in ["sha256", "hash256", "ripemd160", "hash160"]:
+            digest = bytes.fromhex(params[0])
+            if tag == "sha256":
+                return Sha256(digest), remaining
+            if tag == "hash256":
+                return Hash256(digest), remaining
+            if tag == "ripemd160":
+                return Ripemd160(digest), remaining
+            return Hash160(digest), remaining
+
+        if tag == "multi":
+            k = int(params.pop(0))
+            key_n = []
+            for param in params:
+                key_obj = MiniscriptKey(param)
+                key_n.append(key_obj)
+            return Multi(k, key_n), remaining
+
+        assert False, (tag, params, remaining)
+
+    # Non-terminal elements (connectives)
+    # We special case Thresh, as its first sub is an integer.
+    if tag == "thresh":
+        k, remaining = parse_one_num(remaining)
+    # TODO: real errors in place of unpacking
+    subs, remaining = parse_many(remaining)
+
+    if tag == "and_v":
+        return AndV(*subs), remaining
+
+    if tag == "and_b":
+        return AndB(*subs), remaining
+
+    if tag == "and_n":
+        return AndN(*subs), remaining
+
+    if tag == "or_b":
+        return OrB(*subs), remaining
+
+    if tag == "or_c":
+        return OrC(*subs), remaining
+
+    if tag == "or_d":
+        return OrD(*subs), remaining
+
+    if tag == "or_i":
+        return OrI(*subs), remaining
+
+    if tag == "andor":
+        return AndOr(*subs), remaining
+
+    if tag == "thresh":
+        return Thresh(k, subs), remaining
+
+    assert False, (tag, subs, remaining)  # TODO
 
 
 def miniscript_from_str(ms_str):
     """Construct miniscript node from string representation"""
-    tag, sub_exprs = parse_string(ms_str)
-    k = None
-
-    if tag == "0":
-        return Just0()
-
-    if tag == "1":
-        return Just1()
-
-    if tag == "pk":
-        return WrapC(Pk(sub_exprs[0]))
-
-    if tag == "pk_k":
-        return Pk(sub_exprs[0])
-
-    if tag == "pkh":
-        keyhash = bytes.fromhex(sub_exprs[0])
-        return WrapC(Pkh(keyhash))
-
-    if tag == "pk_h":
-        keyhash_b = bytes.fromhex(sub_exprs[0])
-        return Pkh(keyhash_b)
-
-    if tag == "older":
-        value = int(sub_exprs[0])
-        return Older(value)
-
-    if tag == "after":
-        value = int(sub_exprs[0])
-        return After(value)
-
-    if tag in ["sha256", "hash256", "ripemd160", "hash160"]:
-        digest = bytes.fromhex(sub_exprs[0])
-        if tag == "sha256":
-            return Sha256(digest)
-        if tag == "hash256":
-            return Hash256(digest)
-        if tag == "ripemd160":
-            return Ripemd160(digest)
-        return Hash160(digest)
-
-    if tag == "multi":
-        k = int(sub_exprs.pop(0))
-        key_n = []
-        for sub_expr in sub_exprs:
-            key_obj = MiniscriptKey(sub_expr)
-            key_n.append(key_obj)
-        return Multi(k, key_n)
-
-    if tag == "and_v":
-        return AndV(*parse_sub_strings(sub_exprs))
-
-    if tag == "and_b":
-        return AndB(*parse_sub_strings(sub_exprs))
-
-    if tag == "and_n":
-        return AndN(*parse_sub_strings(sub_exprs))
-
-    if tag == "or_b":
-        return OrB(*parse_sub_strings(sub_exprs))
-
-    if tag == "or_c":
-        return OrC(*parse_sub_strings(sub_exprs))
-
-    if tag == "or_d":
-        return OrD(*parse_sub_strings(sub_exprs))
-
-    if tag == "or_i":
-        return OrI(*parse_sub_strings(sub_exprs))
-
-    if tag == "andor":
-        return AndOr(*parse_sub_strings(sub_exprs))
-
-    if tag == "thresh":
-        k = int(sub_exprs.pop(0))
-        return Thresh(k, parse_sub_strings(sub_exprs))
-
-    if tag == "a":
-        return WrapA(*parse_sub_strings(sub_exprs))
-
-    if tag == "s":
-        return WrapS(*parse_sub_strings(sub_exprs))
-
-    if tag == "c":
-        return WrapC(*parse_sub_strings(sub_exprs))
-
-    if tag == "t":
-        return WrapT(*parse_sub_strings(sub_exprs))
-
-    if tag == "d":
-        return WrapD(*parse_sub_strings(sub_exprs))
-
-    if tag == "v":
-        return WrapV(*parse_sub_strings(sub_exprs))
-
-    if tag == "j":
-        return WrapJ(*parse_sub_strings(sub_exprs))
-
-    if tag == "n":
-        return WrapN(*parse_sub_strings(sub_exprs))
-
-    if tag == "l":
-        return WrapL(*parse_sub_strings(sub_exprs))
-
-    if tag == "u":
-        return WrapU(*parse_sub_strings(sub_exprs))
-
-    assert False, (tag, sub_exprs)  # TODO
+    node, remaining = parse_one(ms_str)
+    assert remaining == ""
+    return node
