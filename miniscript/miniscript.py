@@ -847,6 +847,7 @@ class Pkh(Node):
 class Older(Node):
     def __init__(self, value):
         assert value > 0 and value < 2 ** 31
+        Node.__init__(self)
 
         self.value = value
         self._script = [self.value, OP_CHECKSEQUENCEVERIFY]
@@ -864,6 +865,7 @@ class Older(Node):
 class After(Node):
     def __init__(self, value):
         assert value > 0 and value < 2 ** 31
+        Node.__init__(self)
 
         self.value = value
         self._script = [self.value, OP_CHECKLOCKTIMEVERIFY]
@@ -881,6 +883,7 @@ class After(Node):
 class Sha256(Node):
     def __init__(self, digest):
         assert isinstance(digest, bytes) and len(digest) == 32
+        Node.__init__(self)
 
         self.digest = digest
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_SHA256, digest, OP_EQUAL]
@@ -898,6 +901,7 @@ class Sha256(Node):
 class Hash256(Node):
     def __init__(self, digest):
         assert isinstance(digest, bytes) and len(digest) == 32
+        Node.__init__(self)
 
         self.digest = digest
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH256, digest, OP_EQUAL]
@@ -915,6 +919,7 @@ class Hash256(Node):
 class Ripemd160(Node):
     def __init__(self, digest):
         assert isinstance(digest, bytes) and len(digest) == 20
+        Node.__init__(self)
 
         self.digest = digest
         self.needs_sig = False
@@ -932,6 +937,7 @@ class Ripemd160(Node):
 class Hash160(Node):
     def __init__(self, digest):
         assert isinstance(digest, bytes) and len(digest) == 20
+        Node.__init__(self)
 
         self.digest = digest
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH160, digest, OP_EQUAL]
@@ -950,6 +956,7 @@ class Multi(Node):
     def __init__(self, k, keys):
         assert 1 <= k <= len(keys)
         assert all(isinstance(k, MiniscriptKey) for k in keys)
+        Node.__init__(self)
 
         self.k = k
         self.keys = keys
@@ -971,6 +978,7 @@ class AndV(Node):
     def __init__(self, sub_x, sub_y):
         assert sub_x.p.V
         assert sub_y.p.has_any("BKV")
+        Node.__init__(self)
 
         self.subs = [sub_x, sub_y]
         self._script = sub_x._script + sub_y._script
@@ -996,6 +1004,7 @@ class AndV(Node):
 class AndB(Node):
     def __init__(self, sub_x, sub_y):
         assert sub_x.p.B and sub_y.p.W
+        Node.__init__(self)
 
         self.subs = [sub_x, sub_y]
         self._script = [*sub_x._script, *sub_y._script, OP_BOOLAND]
@@ -1034,6 +1043,7 @@ class OrB(Node):
     def __init__(self, sub_x, sub_z):
         assert sub_x.p.has_all("Bd")
         assert sub_z.p.has_all("Wd")
+        Node.__init__(self)
 
         self.subs = [sub_x, sub_z]
         self._script = [*sub_x._script, *sub_z._script, OP_BOOLOR]
@@ -1058,6 +1068,7 @@ class OrB(Node):
 class OrC(Node):
     def __init__(self, sub_x, sub_z):
         assert sub_x.p.has_all("Bdu") and sub_z.p.V
+        Node.__init__(self)
 
         self.subs = [sub_x, sub_z]
         self._script = [*sub_x._script, OP_NOTIF, *sub_z._script, OP_ENDIF]
@@ -1086,6 +1097,7 @@ class OrD(Node):
     def __init__(self, sub_x, sub_z):
         assert sub_x.p.has_all("Bdu")
         assert sub_z.p.has_all("B")
+        Node.__init__(self)
 
         self.subs = [sub_x, sub_z]
         self._script = [*sub_x._script, OP_IFDUP, OP_NOTIF, *sub_z._script, OP_ENDIF]
@@ -1115,6 +1127,7 @@ class OrD(Node):
 class OrI(Node):
     def __init__(self, sub_x, sub_z):
         assert sub_x.p.type() == sub_z.p.type() and sub_x.p.has_any("BKV")
+        Node.__init__(self)
 
         self.subs = [sub_x, sub_z]
         self._script = [OP_IF, *sub_x._script, OP_ELSE, *sub_z._script, OP_ENDIF]
@@ -1145,6 +1158,7 @@ class AndOr(Node):
     def __init__(self, sub_x, sub_y, sub_z):
         assert sub_x.p.has_all("Bdu")
         assert sub_y.p.type() == sub_z.p.type() and sub_y.p.has_any("BKV")
+        Node.__init__(self)
 
         self.subs = [sub_x, sub_y, sub_z]
         self._script = [
@@ -1203,6 +1217,7 @@ class Thresh(Node):
     def __init__(self, k, subs):
         n = len(subs)
         assert 1 <= k <= n
+        Node.__init__(self)
 
         self.k = k
         self.subs = subs
@@ -1254,6 +1269,7 @@ def is_wrapper(node):
 class WrapA(Node):
     def __init__(self, sub):
         assert sub.p.B
+        Node.__init__(self)
 
         self.subs = [sub]
         self._script = [OP_TOALTSTACK, *sub._script, OP_FROMALTSTACK]
@@ -1273,6 +1289,7 @@ class WrapA(Node):
 class WrapS(Node):
     def __init__(self, sub):
         assert sub.p.has_all("Bo")
+        Node.__init__(self)
 
         self.subs = [sub]
         self._script = [OP_SWAP, *sub._script]
@@ -1293,6 +1310,7 @@ class WrapS(Node):
 class WrapC(Node):
     def __init__(self, sub):
         assert sub.p.K
+        Node.__init__(self)
 
         self.subs = [sub]
         self._script = [*sub._script, OP_CHECKSIG]
@@ -1326,6 +1344,7 @@ class WrapT(AndV):
 class WrapD(Node):
     def __init__(self, sub):
         assert sub.p.has_all("Vz")
+        Node.__init__(self)
 
         self.subs = [sub]
         self._script = [OP_DUP, OP_IF, *sub._script, OP_ENDIF]
@@ -1346,6 +1365,7 @@ class WrapD(Node):
 class WrapV(Node):
     def __init__(self, sub):
         assert sub.p.B
+        Node.__init__(self)
 
         self.subs = [sub]
         if sub._script[-1] == OP_CHECKSIG:
@@ -1373,6 +1393,7 @@ class WrapV(Node):
 class WrapJ(Node):
     def __init__(self, sub):
         assert sub.p.has_all("Bn")
+        Node.__init__(self)
 
         self.subs = [sub]
         self._script = [OP_SIZE, OP_0NOTEQUAL, OP_IF, *sub._script, OP_ENDIF]
@@ -1393,6 +1414,7 @@ class WrapJ(Node):
 class WrapN(Node):
     def __init__(self, sub):
         assert sub.p.B
+        Node.__init__(self)
 
         self.subs = [sub]
         self._script = [*sub._script, OP_0NOTEQUAL]
