@@ -313,6 +313,7 @@ def parse_nonterm_3_elems(expr_list, idx):
         expr_list[idx : idx + 3] = [node]
         return expr_list
 
+    # FIXME: multi is a terminal!
     # Match against a multi.
     try:
         k = stack_item_to_int(expr_list[idx])

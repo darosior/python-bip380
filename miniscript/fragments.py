@@ -44,6 +44,16 @@ from .script import (
 )
 
 
+# Threshold for nLockTime: below this value it is interpreted as block number,
+# otherwise as UNIX timestamp.
+LOCKTIME_THRESHOLD = 500000000  # Tue Nov  5 00:53:20 1985 UTC
+
+# If CTxIn::nSequence encodes a relative lock-time and this flag
+# is set, the relative lock-time has units of 512 seconds,
+# otherwise it specifies blocks with a granularity of 1.
+SEQUENCE_LOCKTIME_TYPE_FLAG = 1 << 22
+
+
 def hash160(data):
     """{data} must be bytes, returns ripemd160(sha256(data))"""
     sha2 = hashlib.sha256(data).digest()
@@ -70,6 +80,17 @@ class Node:
         # Whether for any possible way to satisfy this fragment (may be none), a
         # non-malleable satisfaction exists.
         self.is_nonmalleable = None
+        # Whether this node or any of its subs contains an absolute heightlock
+        self.abs_heightlocks = None
+        # Whether this node or any of its subs contains a relative heightlock
+        self.rel_heightlocks = None
+        # Whether this node or any of its subs contains an absolute timelock
+        self.abs_timelocks = None
+        # Whether this node or any of its subs contains a relative timelock
+        self.rel_timelocks = None
+        # Whether this node does not contain a mix of timelock or heightlock of different types.
+        # That is, not (abs_heightlocks and rel_heightlocks or abs_timelocks and abs_timelocks)
+        self.no_timelock_mix = None
 
     # TODO: have something like BuildScript from Core and get rid of the _script member.
     @property
@@ -88,6 +109,11 @@ class Just0(Node):
         self.is_forced = False
         self.is_expressive = True
         self.is_nonmalleable = True
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
 
     def __repr__(self):
         return "0"
@@ -104,6 +130,11 @@ class Just1(Node):
         self.is_forced = True  # No dissat
         self.is_expressive = False  # No dissat
         self.is_nonmalleable = True  # FIXME: how comes? Standardness rules?
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
 
     def __repr__(self):
         return "1"
@@ -127,6 +158,11 @@ class Pk(Node):
         self.is_forced = False
         self.is_expressive = True
         self.is_nonmalleable = True
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
 
     def __repr__(self):
         return f"pk_k({self.pubkey.bytes().hex()})"
@@ -158,6 +194,11 @@ class Pkh(Node):
         self.is_forced = False
         self.is_expressive = True
         self.is_nonmalleable = True
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
 
     def __repr__(self):
         if isinstance(self.pk_or_pkh, MiniscriptKey):
@@ -190,6 +231,11 @@ class Older(Node):
         self.is_forced = True
         self.is_expressive = False  # No dissat
         self.is_nonmalleable = True
+        self.rel_timelocks = bool(value & SEQUENCE_LOCKTIME_TYPE_FLAG)
+        self.rel_heightlocks = not self.rel_timelocks
+        self.abs_heightlocks = False
+        self.abs_timelocks = False
+        self.no_timelock_mix = True
 
     def __repr__(self):
         return f"older({self.value})"
@@ -208,6 +254,11 @@ class After(Node):
         self.is_forced = True
         self.is_expressive = False  # No dissat
         self.is_nonmalleable = True
+        self.abs_heightlocks = value < LOCKTIME_THRESHOLD
+        self.abs_timelocks = not self.abs_heightlocks
+        self.rel_heightlocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
 
     def __repr__(self):
         return f"after({self.value})"
@@ -226,6 +277,11 @@ class Sha256(Node):
         self.is_forced = False
         self.is_expressive = False
         self.is_nonmalleable = True
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
 
     def __repr__(self):
         return f"sha256({self.digest.hex()})"
@@ -244,6 +300,11 @@ class Hash256(Node):
         self.is_forced = False
         self.is_expressive = False
         self.is_nonmalleable = True
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
 
     def __repr__(self):
         return f"hash256({self.digest.hex()})"
@@ -259,6 +320,11 @@ class Ripemd160(Node):
         self.is_forced = False
         self.is_expressive = False
         self.is_nonmalleable = True
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
 
         self.p = Property("Bonud")
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, digest, OP_EQUAL]
@@ -280,6 +346,11 @@ class Hash160(Node):
         self.is_forced = False
         self.is_expressive = False
         self.is_nonmalleable = True
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
 
     def __repr__(self):
         return f"hash160({self.digest.hex()})"
@@ -300,6 +371,11 @@ class Multi(Node):
         self.is_forced = False
         self.is_expressive = False
         self.is_nonmalleable = True  # FIXME: why? Standardness rules?
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
 
     def __repr__(self):
         return (
@@ -327,6 +403,16 @@ class AndV(Node):
         self.is_forced = any(sub.needs_sig for sub in self.subs)
         self.is_expressive = False  # Not 'd'
         self.is_nonmalleable = all(sub.is_nonmalleable for sub in self.subs)
+        self.abs_heightlocks = any(sub.abs_heightlocks for sub in self.subs)
+        self.rel_heightlocks = any(sub.rel_heightlocks for sub in self.subs)
+        self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
+        self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
+        self.no_timelock_mix = not (
+            self.abs_heightlocks
+            and self.abs_timelocks
+            or self.rel_heightlocks
+            and self.rel_timelocks
+        )
 
         # TODO: satisfaction
 
@@ -365,6 +451,16 @@ class AndB(Node):
         )
         self.is_expressive = all(sub.is_forced and sub.needs_sig for sub in self.subs)
         self.is_nonmalleable = all(sub.is_nonmalleable for sub in self.subs)
+        self.abs_heightlocks = any(sub.abs_heightlocks for sub in self.subs)
+        self.rel_heightlocks = any(sub.rel_heightlocks for sub in self.subs)
+        self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
+        self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
+        self.no_timelock_mix = not (
+            self.abs_heightlocks
+            and self.abs_timelocks
+            or self.rel_heightlocks
+            and self.rel_timelocks
+        )
 
         # TODO: satisfaction
 
@@ -392,6 +488,11 @@ class OrB(Node):
         self.is_nonmalleable = all(
             sub.is_nonmalleable and sub.is_expressive for sub in self.subs
         ) and any(sub.needs_sig for sub in self.subs)
+        self.abs_heightlocks = any(sub.abs_heightlocks for sub in self.subs)
+        self.rel_heightlocks = any(sub.rel_heightlocks for sub in self.subs)
+        self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
+        self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
+        self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
         # TODO: satisfaction
 
     def __repr__(self):
@@ -419,6 +520,11 @@ class OrC(Node):
             and any(sub.needs_sig for sub in self.subs)
             and sub_x.is_expressive
         )
+        self.abs_heightlocks = any(sub.abs_heightlocks for sub in self.subs)
+        self.rel_heightlocks = any(sub.rel_heightlocks for sub in self.subs)
+        self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
+        self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
+        self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
 
         # TODO: satisfaction
 
@@ -450,6 +556,11 @@ class OrD(Node):
             and any(sub.needs_sig for sub in self.subs)
             and sub_x.is_expressive
         )
+        self.abs_heightlocks = any(sub.abs_heightlocks for sub in self.subs)
+        self.rel_heightlocks = any(sub.rel_heightlocks for sub in self.subs)
+        self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
+        self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
+        self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
 
         # TODO: satisfaction
 
@@ -482,6 +593,11 @@ class OrI(Node):
         self.is_nonmalleable = all(sub.is_nonmalleable for sub in self.subs) and any(
             sub.needs_sig for sub in self.subs
         )
+        self.abs_heightlocks = any(sub.abs_heightlocks for sub in self.subs)
+        self.rel_heightlocks = any(sub.rel_heightlocks for sub in self.subs)
+        self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
+        self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
+        self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
 
     def __repr__(self):
         return f"or_i({','.join(map(str, self.subs))})"
@@ -531,6 +647,18 @@ class AndOr(Node):
             and any(sub.needs_sig for sub in self.subs)
             and sub_x.is_expressive
         )
+        self.abs_heightlocks = any(sub.abs_heightlocks for sub in self.subs)
+        self.rel_heightlocks = any(sub.rel_heightlocks for sub in self.subs)
+        self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
+        self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
+        # X and Y, or Z. So we have a mix if either X itself contains a mix, or
+        # there is a mix between Y and Z.
+        self.no_timelock_mix = sub_z.no_timelock_mix and not (
+            any(sub.rel_timelocks for sub in [sub_x, sub_y])
+            and any(sub.rel_heightlocks for sub in [sub_x, sub_y])
+            or any(sub.abs_timelocks for sub in [sub_x, sub_y])
+            and any(sub.abs_heightlocks for sub in [sub_x, sub_y])
+        )
 
         # TODO: satisfaction
 
@@ -564,6 +692,14 @@ class Thresh(Node):
         all_e = True
         all_m = True
         s_count = 0
+        # If k == 1, just check each child for k
+        if k > 1:
+            self.abs_heightlocks = subs[0].abs_heightlocks
+            self.rel_heightlocks = subs[0].rel_heightlocks
+            self.abs_timelocks = subs[0].abs_timelocks
+            self.rel_timelocks = subs[0].rel_timelocks
+        else:
+            self.no_timelock_mix = True
         assert subs[0].p.has_all("Bdu")
         for sub in subs[1:]:
             assert sub.p.has_all("Wdu")
@@ -579,6 +715,13 @@ class Thresh(Node):
             all_m = all_m and sub.p.m
             if sub.p.s:
                 s_count += 1
+            if k > 1:
+                self.abs_heightlocks |= sub.abs_heightlocks
+                self.rel_heightlocks |= sub.rel_heightlocks
+                self.abs_timelocks |= sub.abs_timelocks
+                self.rel_timelocks |= sub.rel_timelocks
+            else:
+                self.no_timelock_mix &= sub.no_timelock_mix
 
         self.p = Property(
             "B" + ("z" if all_z else "") + ("o" if all_z_but_one_odu else "")
@@ -587,6 +730,13 @@ class Thresh(Node):
         self.is_forced = False  # All subs need to be 'd'
         self.is_expressive = all_e and s_count == n
         self.is_nonmalleable = all_e and s_count >= n - k
+        if k > 1:
+            self.no_timelock_mix = not (
+                self.abs_heightlocks
+                and self.abs_timelocks
+                or self.rel_heightlocks
+                and self.rel_timelocks
+            )
 
     def __repr__(self):
         return f"thresh({self.k},{','.join(map(str, self.subs))})"
@@ -612,6 +762,16 @@ class WrapA(Node):
         self.is_forced = sub.is_forced
         self.is_expressive = sub.is_expressive
         self.is_nonmalleable = sub.is_nonmalleable
+        self.abs_heightlocks = sub.abs_heightlocks
+        self.rel_heightlocks = sub.rel_heightlocks
+        self.abs_timelocks = sub.abs_timelocks
+        self.rel_timelocks = sub.rel_timelocks
+        self.no_timelock_mix = not (
+            self.abs_heightlocks
+            and self.abs_timelocks
+            or self.rel_heightlocks
+            and self.rel_timelocks
+        )
 
     def __repr__(self):
         if is_wrapper(self.subs[0]):
@@ -632,6 +792,16 @@ class WrapS(Node):
         self.is_forced = sub.is_forced
         self.is_expressive = sub.is_expressive
         self.is_nonmalleable = sub.is_nonmalleable
+        self.abs_heightlocks = sub.abs_heightlocks
+        self.rel_heightlocks = sub.rel_heightlocks
+        self.abs_timelocks = sub.abs_timelocks
+        self.rel_timelocks = sub.rel_timelocks
+        self.no_timelock_mix = not (
+            self.abs_heightlocks
+            and self.abs_timelocks
+            or self.rel_heightlocks
+            and self.rel_timelocks
+        )
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -654,6 +824,16 @@ class WrapC(Node):
         self.is_forced = sub.is_forced
         self.is_expressive = sub.is_expressive
         self.is_nonmalleable = sub.is_nonmalleable
+        self.abs_heightlocks = sub.abs_heightlocks
+        self.rel_heightlocks = sub.rel_heightlocks
+        self.abs_timelocks = sub.abs_timelocks
+        self.rel_timelocks = sub.rel_timelocks
+        self.no_timelock_mix = not (
+            self.abs_heightlocks
+            and self.abs_timelocks
+            or self.rel_heightlocks
+            and self.rel_timelocks
+        )
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -687,6 +867,16 @@ class WrapD(Node):
         self.is_forced = True  # sub is V
         self.is_expressive = True  # sub is V, and we add a single dissat
         self.is_nonmalleable = sub.is_nonmalleable
+        self.abs_heightlocks = sub.abs_heightlocks
+        self.rel_heightlocks = sub.rel_heightlocks
+        self.abs_timelocks = sub.abs_timelocks
+        self.rel_timelocks = sub.rel_timelocks
+        self.no_timelock_mix = not (
+            self.abs_heightlocks
+            and self.abs_timelocks
+            or self.rel_heightlocks
+            and self.rel_timelocks
+        )
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -715,6 +905,16 @@ class WrapV(Node):
         self.is_forced = True  # V
         self.is_expressive = False  # V
         self.is_nonmalleable = sub.is_nonmalleable
+        self.abs_heightlocks = sub.abs_heightlocks
+        self.rel_heightlocks = sub.rel_heightlocks
+        self.abs_timelocks = sub.abs_timelocks
+        self.rel_timelocks = sub.rel_timelocks
+        self.no_timelock_mix = not (
+            self.abs_heightlocks
+            and self.abs_timelocks
+            or self.rel_heightlocks
+            and self.rel_timelocks
+        )
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -736,6 +936,16 @@ class WrapJ(Node):
         self.is_forced = False  # d
         self.is_expressive = sub.is_forced
         self.is_nonmalleable = sub.is_nonmalleable
+        self.abs_heightlocks = sub.abs_heightlocks
+        self.rel_heightlocks = sub.rel_heightlocks
+        self.abs_timelocks = sub.abs_timelocks
+        self.rel_timelocks = sub.rel_timelocks
+        self.no_timelock_mix = not (
+            self.abs_heightlocks
+            and self.abs_timelocks
+            or self.rel_heightlocks
+            and self.rel_timelocks
+        )
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -757,6 +967,16 @@ class WrapN(Node):
         self.is_forced = sub.is_forced
         self.is_expressive = sub.is_expressive
         self.is_nonmalleable = sub.is_nonmalleable
+        self.abs_heightlocks = sub.abs_heightlocks
+        self.rel_heightlocks = sub.rel_heightlocks
+        self.abs_timelocks = sub.abs_timelocks
+        self.rel_timelocks = sub.rel_timelocks
+        self.no_timelock_mix = not (
+            self.abs_heightlocks
+            and self.abs_timelocks
+            or self.rel_heightlocks
+            and self.rel_timelocks
+        )
 
     def __repr__(self):
         # Avoid duplicating colons
