@@ -10,6 +10,7 @@ import hashlib
 from .errors import MiniscriptNodeCreationError
 from .key import MiniscriptKey
 from .property import Property
+from .satisfaction import ExecutionInfo
 from .script import (
     CScript,
     OP_1,
@@ -91,6 +92,8 @@ class Node:
         # Whether this node does not contain a mix of timelock or heightlock of different types.
         # That is, not (abs_heightlocks and rel_heightlocks or abs_timelocks and abs_timelocks)
         self.no_timelock_mix = None
+        # Information about this Miniscript execution (satisfaction cost, etc..)
+        self.exec_info = None
 
     # TODO: have something like BuildScript from Core and get rid of the _script member.
     @property
@@ -114,6 +117,7 @@ class Just0(Node):
         self.abs_timelocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(0, 0, None, 0)
 
     def __repr__(self):
         return "0"
@@ -135,6 +139,7 @@ class Just1(Node):
         self.abs_timelocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(0, 0, 0, None)
 
     def __repr__(self):
         return "1"
@@ -163,6 +168,7 @@ class Pk(Node):
         self.abs_timelocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(0, 0, 0, 0)
 
     def __repr__(self):
         return f"pk_k({self.pubkey.bytes().hex()})"
@@ -199,6 +205,7 @@ class Pkh(Node):
         self.abs_timelocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(3, 0, 1, 1)
 
     def __repr__(self):
         if isinstance(self.pk_or_pkh, MiniscriptKey):
@@ -236,6 +243,7 @@ class Older(Node):
         self.abs_heightlocks = False
         self.abs_timelocks = False
         self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(1, 0, 0, None)
 
     def __repr__(self):
         return f"older({self.value})"
@@ -259,6 +267,7 @@ class After(Node):
         self.rel_heightlocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(1, 0, 0, None)
 
     def __repr__(self):
         return f"after({self.value})"
@@ -282,6 +291,7 @@ class Sha256(Node):
         self.abs_timelocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(4, 0, 1, None)
 
     def __repr__(self):
         return f"sha256({self.digest.hex()})"
@@ -305,6 +315,7 @@ class Hash256(Node):
         self.abs_timelocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(4, 0, 1, None)
 
     def __repr__(self):
         return f"hash256({self.digest.hex()})"
@@ -314,6 +325,9 @@ class Ripemd160(Node):
     def __init__(self, digest):
         assert isinstance(digest, bytes) and len(digest) == 20
         Node.__init__(self)
+
+        self.p = Property("Bonud")
+        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, digest, OP_EQUAL]
 
         self.digest = digest
         self.needs_sig = False
@@ -325,9 +339,7 @@ class Ripemd160(Node):
         self.abs_timelocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
-
-        self.p = Property("Bonud")
-        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, digest, OP_EQUAL]
+        self.exec_info = ExecutionInfo(4, 0, 1, None)
 
     def __repr__(self):
         return f"ripemd160({self.digest.hex()})"
@@ -351,6 +363,7 @@ class Hash160(Node):
         self.abs_timelocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(4, 0, 1, None)
 
     def __repr__(self):
         return f"hash160({self.digest.hex()})"
@@ -370,12 +383,13 @@ class Multi(Node):
         self.needs_sig = True
         self.is_forced = False
         self.is_expressive = False
-        self.is_nonmalleable = True  # FIXME: why? Standardness rules?
+        self.is_nonmalleable = True
         self.abs_heightlocks = False
         self.rel_heightlocks = False
         self.abs_timelocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(1, len(keys), 1 + k, 1 + k)
 
     def __repr__(self):
         return (
@@ -413,6 +427,8 @@ class AndV(Node):
             or self.rel_heightlocks
             and self.rel_timelocks
         )
+        self.exec_info = ExecutionInfo.from_concat(sub_x.exec_info, sub_y.exec_info)
+        self.exec_info.set_undissatisfiable()  # it's V.
 
         # TODO: satisfaction
 
@@ -461,8 +477,9 @@ class AndB(Node):
             or self.rel_heightlocks
             and self.rel_timelocks
         )
-
-        # TODO: satisfaction
+        self.exec_info = ExecutionInfo.from_concat(
+            sub_x.exec_info, sub_y.exec_info, ops_count=1
+        )
 
     def __repr__(self):
         return f"and_b({','.join(map(str, self.subs))})"
@@ -493,6 +510,10 @@ class OrB(Node):
         self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
         self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
         self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
+        self.exec_info = ExecutionInfo.from_concat(
+            sub_x.exec_info, sub_z.exec_info, ops_count=1, disjunction=True
+        )
+
         # TODO: satisfaction
 
     def __repr__(self):
@@ -525,6 +546,10 @@ class OrC(Node):
         self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
         self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
         self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
+        self.exec_info = ExecutionInfo.from_or_uneven(
+            sub_x.exec_info, sub_z.exec_info, ops_count=2
+        )
+        self.exec_info.set_undissatisfiable()  # it's V.
 
         # TODO: satisfaction
 
@@ -561,6 +586,9 @@ class OrD(Node):
         self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
         self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
         self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
+        self.exec_info = ExecutionInfo.from_or_uneven(
+            sub_x.exec_info, sub_z.exec_info, ops_count=3
+        )
 
         # TODO: satisfaction
 
@@ -598,6 +626,9 @@ class OrI(Node):
         self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
         self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
         self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
+        self.exec_info = ExecutionInfo.from_or_even(
+            sub_x.exec_info, sub_z.exec_info, ops_count=3
+        )
 
     def __repr__(self):
         return f"or_i({','.join(map(str, self.subs))})"
@@ -659,6 +690,9 @@ class AndOr(Node):
             or any(sub.abs_timelocks for sub in [sub_x, sub_y])
             and any(sub.abs_heightlocks for sub in [sub_x, sub_y])
         )
+        self.exec_info = ExecutionInfo.from_andor_uneven(
+            sub_x.exec_info, sub_y.exec_info, sub_z.exec_info, ops_count=3
+        )
 
         # TODO: satisfaction
 
@@ -700,6 +734,7 @@ class Thresh(Node):
             self.rel_timelocks = subs[0].rel_timelocks
         else:
             self.no_timelock_mix = True
+
         assert subs[0].p.has_all("Bdu")
         for sub in subs[1:]:
             assert sub.p.has_all("Wdu")
@@ -737,6 +772,7 @@ class Thresh(Node):
                 or self.rel_heightlocks
                 and self.rel_timelocks
             )
+        self.exec_info = ExecutionInfo.from_thresh(k, [sub.exec_info for sub in subs])
 
     def __repr__(self):
         return f"thresh({self.k},{','.join(map(str, self.subs))})"
@@ -745,7 +781,7 @@ class Thresh(Node):
 def is_wrapper(node):
     """Whether the given node is a wrapper or not."""
     return isinstance(
-        node, (WrapA, WrapS, WrapC, WrapD, WrapV, WrapJ, WrapL, WrapU, WrapT)
+        node, (WrapA, WrapS, WrapC, WrapD, WrapV, WrapJ, WrapL, WrapU, WrapT, WrapN)
     )
 
 
@@ -772,6 +808,7 @@ class WrapA(Node):
             or self.rel_heightlocks
             and self.rel_timelocks
         )
+        self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=2)
 
     def __repr__(self):
         if is_wrapper(self.subs[0]):
@@ -802,6 +839,7 @@ class WrapS(Node):
             or self.rel_heightlocks
             and self.rel_timelocks
         )
+        self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -819,7 +857,7 @@ class WrapC(Node):
         self._script = [*sub._script, OP_CHECKSIG]
 
         # FIXME: shouldn't n and d be default props on the website?
-        self.p = Property("Bsndu" + ("o" if sub.p.o else ""))
+        self.p = Property("Bsu" + "".join(c for c in "dno" if getattr(sub.p, c)))
         self.needs_sig = True
         self.is_forced = sub.is_forced
         self.is_expressive = sub.is_expressive
@@ -833,6 +871,9 @@ class WrapC(Node):
             and self.abs_timelocks
             or self.rel_heightlocks
             and self.rel_timelocks
+        )
+        self.exec_info = ExecutionInfo.from_wrap(
+            sub.exec_info, ops_count=1, sat=1, dissat=1
         )
 
     def __repr__(self):
@@ -877,6 +918,9 @@ class WrapD(Node):
             or self.rel_heightlocks
             and self.rel_timelocks
         )
+        self.exec_info = ExecutionInfo.from_wrap_dissat(
+            sub.exec_info, ops_count=3, sat=1, dissat=1
+        )
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -915,6 +959,8 @@ class WrapV(Node):
             or self.rel_heightlocks
             and self.rel_timelocks
         )
+        verify_cost = int(self._script[-1] == OP_VERIFY)
+        self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=verify_cost)
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -945,6 +991,9 @@ class WrapJ(Node):
             and self.abs_timelocks
             or self.rel_heightlocks
             and self.rel_timelocks
+        )
+        self.exec_info = ExecutionInfo.from_wrap_dissat(
+            sub.exec_info, ops_count=4, dissat=1
         )
 
     def __repr__(self):
@@ -977,6 +1026,7 @@ class WrapN(Node):
             or self.rel_heightlocks
             and self.rel_timelocks
         )
+        self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
 
     def __repr__(self):
         # Avoid duplicating colons
