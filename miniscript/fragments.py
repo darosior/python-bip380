@@ -903,7 +903,7 @@ class WrapD(Node):
         self.subs = [sub]
         self._script = [OP_DUP, OP_IF, *sub._script, OP_ENDIF]
 
-        self.p = Property("Bondu")
+        self.p = Property("Bond")
         self.needs_sig = sub.needs_sig
         self.is_forced = True  # sub is V
         self.is_expressive = True  # sub is V, and we add a single dissat

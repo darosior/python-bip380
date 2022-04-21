@@ -110,7 +110,7 @@ def test_simple_sanity_checks():
         f"andor(c:pk_k({dummy_pk()}),or_i(and_v(vc:pk_h({dummy_h160()}),ripemd160({dummy_h160()})),older(35)),c:pk_k({dummy_pk()}))"
     )
     roundtrip(
-        f"thresh(3,c:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}),sdv:after(30))"
+        f"thresh(3,c:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}),sndv:after(30))"
     )
     roundtrip(
         f"thresh(4,c:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}))"
@@ -172,22 +172,22 @@ def test_timelock_conflicts():
         "and_v(v:after(1000000000),after(100))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "and_n(dv:after(100),after(1000000000))"
+        "and_n(ndv:after(100),after(1000000000))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "and_n(dv:after(1000000000),after(100))"
+        "and_n(ndv:after(1000000000),after(100))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "andor(dv:after(100),after(1000000000),after(1))"
+        "andor(ndv:after(100),after(1000000000),after(1))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "andor(dv:after(1000000000),after(100),after(1))"
+        "andor(ndv:after(1000000000),after(100),after(1))"
     ).no_timelock_mix
     assert miniscript_from_str(
-        "andor(dv:after(100),after(1),after(1000000000))"
+        "andor(ndv:after(100),after(1),after(1000000000))"
     ).no_timelock_mix
     assert miniscript_from_str(
-        "andor(dv:after(1000000000),after(1000000000),after(1))"
+        "andor(ndv:after(1000000000),after(1000000000),after(1))"
     ).no_timelock_mix
     assert miniscript_from_str("or_b(dv:after(100),adv:after(1))").no_timelock_mix
     assert miniscript_from_str(
@@ -196,32 +196,32 @@ def test_timelock_conflicts():
     assert miniscript_from_str(
         "or_b(dv:after(100),adv:after(1000000000))"
     ).no_timelock_mix
-    assert miniscript_from_str("or_c(dv:after(100),v:after(1))").no_timelock_mix
+    assert miniscript_from_str("or_c(ndv:after(100),v:after(1))").no_timelock_mix
     assert miniscript_from_str(
-        "or_c(dv:after(100),v:after(1000000000))"
+        "or_c(ndv:after(100),v:after(1000000000))"
     ).no_timelock_mix
     assert miniscript_from_str(
-        "or_c(dv:after(1000000000),v:after(100))"
+        "or_c(ndv:after(1000000000),v:after(100))"
     ).no_timelock_mix
-    assert miniscript_from_str("or_d(dv:after(100),after(1))").no_timelock_mix
-    assert miniscript_from_str("or_d(dv:after(100),after(1000000000))").no_timelock_mix
-    assert miniscript_from_str("or_d(dv:after(1000000000),after(100))").no_timelock_mix
+    assert miniscript_from_str("or_d(ndv:after(100),after(1))").no_timelock_mix
+    assert miniscript_from_str("or_d(ndv:after(100),after(1000000000))").no_timelock_mix
+    assert miniscript_from_str("or_d(ndv:after(1000000000),after(100))").no_timelock_mix
     assert miniscript_from_str("or_i(after(100),after(1))").no_timelock_mix
     assert miniscript_from_str("or_i(after(100),after(1000000004))").no_timelock_mix
     assert miniscript_from_str("or_i(after(1000000002),after(100))").no_timelock_mix
-    assert miniscript_from_str("thresh(1,dv:after(100),adv:after(1))").no_timelock_mix
-    assert miniscript_from_str("thresh(2,dv:after(100),adv:after(1))").no_timelock_mix
+    assert miniscript_from_str("thresh(1,ndv:after(100),andv:after(1))").no_timelock_mix
+    assert miniscript_from_str("thresh(2,ndv:after(100),andv:after(1))").no_timelock_mix
     assert miniscript_from_str(
-        "thresh(1,dv:after(1000000007),adv:after(12))"
+        "thresh(1,ndv:after(1000000007),andv:after(12))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "thresh(2,dv:after(1000000007),adv:after(12))"
+        "thresh(2,ndv:after(1000000007),andv:after(12))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "thresh(2,dv:after(12),adv:after(1000000007))"
+        "thresh(2,ndv:after(12),andv:after(1000000007))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "thresh(2,dv:after(12),adv:after(1000000007),adv:after(3))"
+        "thresh(2,ndv:after(12),andv:after(1000000007),andv:after(3))"
     ).no_timelock_mix
 
     # Relative timelock simple conflicts
@@ -232,81 +232,81 @@ def test_timelock_conflicts():
     assert not miniscript_from_str("and_v(v:older(100),older(4194304))").no_timelock_mix
     assert not miniscript_from_str("and_v(v:older(4194304),older(100))").no_timelock_mix
     assert not miniscript_from_str(
-        "and_n(dv:older(100),older(4194304))"
+        "and_n(ndv:older(100),older(4194304))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "and_n(dv:older(4194304),older(100))"
+        "and_n(ndv:older(4194304),older(100))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "andor(dv:older(100),older(4194304),older(1))"
+        "andor(ndv:older(100),older(4194304),older(1))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "andor(dv:older(4194304),older(100),older(1))"
+        "andor(ndv:older(4194304),older(100),older(1))"
     ).no_timelock_mix
     assert miniscript_from_str(
-        "andor(dv:older(100),older(1),older(4194304))"
+        "andor(ndv:older(100),older(1),older(4194304))"
     ).no_timelock_mix
     assert miniscript_from_str(
-        "andor(dv:older(4194304),older(4194304),older(1))"
+        "andor(ndv:older(4194304),older(4194304),older(1))"
     ).no_timelock_mix
     assert miniscript_from_str("or_b(dv:older(100),adv:older(1))").no_timelock_mix
     assert miniscript_from_str("or_b(dv:older(100),adv:older(4194304))").no_timelock_mix
     assert miniscript_from_str("or_b(dv:older(100),adv:older(4194304))").no_timelock_mix
-    assert miniscript_from_str("or_c(dv:older(100),v:older(1))").no_timelock_mix
-    assert miniscript_from_str("or_c(dv:older(100),v:older(4194304))").no_timelock_mix
-    assert miniscript_from_str("or_c(dv:older(4194304),v:older(100))").no_timelock_mix
-    assert miniscript_from_str("or_d(dv:older(100),older(1))").no_timelock_mix
-    assert miniscript_from_str("or_d(dv:older(100),older(4194304))").no_timelock_mix
-    assert miniscript_from_str("or_d(dv:older(4194304),older(100))").no_timelock_mix
+    assert miniscript_from_str("or_c(ndv:older(100),v:older(1))").no_timelock_mix
+    assert miniscript_from_str("or_c(ndv:older(100),v:older(4194304))").no_timelock_mix
+    assert miniscript_from_str("or_c(ndv:older(4194304),v:older(100))").no_timelock_mix
+    assert miniscript_from_str("or_d(ndv:older(100),older(1))").no_timelock_mix
+    assert miniscript_from_str("or_d(ndv:older(100),older(4194304))").no_timelock_mix
+    assert miniscript_from_str("or_d(ndv:older(4194304),older(100))").no_timelock_mix
     assert miniscript_from_str("or_i(older(100),older(1))").no_timelock_mix
     assert miniscript_from_str("or_i(older(100),older(4194304))").no_timelock_mix
     assert miniscript_from_str("or_i(older(4194302),older(100))").no_timelock_mix
-    assert miniscript_from_str("thresh(1,dv:older(100),adv:older(1))").no_timelock_mix
-    assert miniscript_from_str("thresh(2,dv:older(100),adv:older(1))").no_timelock_mix
+    assert miniscript_from_str("thresh(1,ndv:older(100),andv:older(1))").no_timelock_mix
+    assert miniscript_from_str("thresh(2,ndv:older(100),andv:older(1))").no_timelock_mix
     assert miniscript_from_str(
-        "thresh(1,dv:older(4194307),adv:older(12))"
+        "thresh(1,ndv:older(4194307),andv:older(12))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "thresh(2,dv:older(4194307),adv:older(12))"
+        "thresh(2,ndv:older(4194307),andv:older(12))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "thresh(2,dv:older(12),adv:older(4194307))"
+        "thresh(2,ndv:older(12),andv:older(4194307))"
     ).no_timelock_mix
     assert not miniscript_from_str(
-        "thresh(2,dv:older(12),adv:older(4194307),adv:older(3))"
+        "thresh(2,ndv:older(12),andv:older(4194307),andv:older(3))"
     ).no_timelock_mix
 
     # There is no mix across relative and absolute timelocks
     assert miniscript_from_str(
-        "thresh(2,dv:older(12),adv:after(1000000000),adv:older(3))"
+        "thresh(2,ndv:older(12),andv:after(1000000000),andv:older(3))"
     ).no_timelock_mix
     assert miniscript_from_str(
-        "thresh(2,dv:after(12),adv:older(4194307),adv:after(3))"
+        "thresh(2,ndv:after(12),andv:older(4194307),andv:after(3))"
     ).no_timelock_mix
     assert miniscript_from_str("or_i(older(100),after(1000000000))").no_timelock_mix
     assert miniscript_from_str("or_i(older(4194302),after(100))").no_timelock_mix
-    assert miniscript_from_str("or_d(dv:older(100),after(1000000000))").no_timelock_mix
-    assert miniscript_from_str("or_d(dv:older(4194304),after(100))").no_timelock_mix
+    assert miniscript_from_str("or_d(ndv:older(100),after(1000000000))").no_timelock_mix
+    assert miniscript_from_str("or_d(ndv:older(4194304),after(100))").no_timelock_mix
     assert miniscript_from_str(
-        "or_c(dv:older(100),v:after(1000000000))"
+        "or_c(ndv:older(100),v:after(1000000000))"
     ).no_timelock_mix
-    assert miniscript_from_str("or_c(dv:older(4194304),v:after(100))").no_timelock_mix
+    assert miniscript_from_str("or_c(ndv:older(4194304),v:after(100))").no_timelock_mix
     assert miniscript_from_str("and_b(older(100),a:after(1000000000))").no_timelock_mix
     assert miniscript_from_str("and_b(older(4194304),a:after(100))").no_timelock_mix
     assert miniscript_from_str("and_v(v:after(100),older(4194304))").no_timelock_mix
     assert miniscript_from_str("and_v(v:older(4194304),after(100))").no_timelock_mix
-    assert miniscript_from_str("and_n(dv:after(100),older(4194304))").no_timelock_mix
+    assert miniscript_from_str("and_n(ndv:after(100),older(4194304))").no_timelock_mix
     assert miniscript_from_str(
-        "and_n(dv:older(4194304),after(1000000000))"
+        "and_n(ndv:older(4194304),after(1000000000))"
     ).no_timelock_mix
     assert miniscript_from_str(
-        "andor(dv:older(100),after(1000000000),older(1))"
+        "andor(ndv:older(100),after(1000000000),older(1))"
     ).no_timelock_mix
     assert miniscript_from_str(
-        "andor(dv:older(100),older(1),after(1000000000))"
+        "andor(ndv:older(100),older(1),after(1000000000))"
     ).no_timelock_mix
     assert miniscript_from_str(
-        "andor(dv:older(4194304),after(4194304),older(1))"
+        "andor(ndv:older(4194304),after(4194304),older(1))"
     ).no_timelock_mix
     assert miniscript_from_str("or_b(dv:after(100),adv:older(4194304))").no_timelock_mix
     assert miniscript_from_str(
@@ -412,8 +412,8 @@ def test_satisfaction_cost():
             2,
         ],
         [
-            "or_d(d:and_v(v:older(4252898),v:older(4252898)),sha256(38df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b6))",
-            14,
+            "or_d(nd:and_v(v:older(4252898),v:older(4252898)),sha256(38df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b6))",
+            15,
             2,
         ],
         [
