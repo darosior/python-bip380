@@ -1,9 +1,30 @@
+import coincurve
 import hashlib
 import os
 import pytest
 
 from bip32 import BIP32
-from miniscript import miniscript_from_str, miniscript_from_script
+from bitcointx.core import (
+    CMutableTxIn,
+    CMutableTxOut,
+    CMutableTransaction,
+    COutPoint,
+)
+from bitcointx.core.bitcoinconsensus import (
+    ConsensusVerifyScript,
+    BITCOINCONSENSUS_ACCEPTED_FLAGS,
+)
+from bitcointx.core.script import (
+    CScript as CScriptBitcoinTx,
+    CScriptWitness,
+    RawBitcoinSignatureHash,
+    SIGVERSION_WITNESS_V0,
+)
+from itertools import chain
+from miniscript import miniscript_from_str, miniscript_from_script, fragments
+from miniscript.key import MiniscriptKey
+from miniscript.satisfaction import SatisfactionMaterial
+from miniscript.script import CScript
 
 
 def dummy_pk():
@@ -18,13 +39,21 @@ def dummy_h160():
     return os.urandom(20).hex()
 
 
+def ripemd160(data):
+    return hashlib.new("ripemd160", data).digest()
+
+
+def sha256(data):
+    return hashlib.sha256(data).digest()
+
+
 def hash160(hex):
     data = bytes.fromhex(hex)
-    sha2 = hashlib.sha256(data).digest()
-    return hashlib.new("ripemd160", sha2).digest()
+    return ripemd160(sha256(data))
 
 
-hash160("01")
+def hash256(data):
+    return sha256(sha256(data))
 
 
 def roundtrip(ms_str):
@@ -70,7 +99,6 @@ def test_simple_sanity_checks():
 
     roundtrip(f"pk({dummy_pk()})")
     roundtrip(f"pk_k({dummy_pk()})")
-    roundtrip(f"pk_h({dummy_h160()})")
     roundtrip("older(100)")
     roundtrip("after(100)")
     roundtrip(f"sha256({dummy_h256()})")
@@ -85,16 +113,15 @@ def test_simple_sanity_checks():
         f"multi(2,{dummy_pk()},{dummy_pk()},{dummy_pk()},{dummy_pk()},{dummy_pk()},{dummy_pk()},{dummy_pk()},{dummy_pk()},{dummy_pk()})"
     )
     roundtrip(f"c:pk_k({dummy_pk()})")
-    roundtrip(f"c:pk_h({dummy_h160()})")
-    roundtrip(f"and_v(and_v(vc:pk_h({dummy_h160()}),vc:pk_h({dummy_h160()})),older(2))")
+    roundtrip(f"and_v(and_v(vc:pk_k({dummy_pk()}),vc:pk_k({dummy_pk()})),older(2))")
     roundtrip(
-        f"or_b(c:pk_k({dummy_pk()}),a:and_b(c:pk_h({dummy_h160()}),sc:pk_k({dummy_pk()})))"
+        f"or_b(c:pk_k({dummy_pk()}),a:and_b(c:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()})))"
     )
     roundtrip(
-        f"or_b(c:pk_k({dummy_pk()}),a:and_b(c:pk_h({dummy_h160()}),sc:pk_k({dummy_pk()})))"
+        f"or_b(c:pk_k({dummy_pk()}),a:and_b(c:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()})))"
     )
     roundtrip(
-        f"or_b(c:pk_k({dummy_pk()}),a:and_n(c:pk_k({dummy_pk()}),c:pk_h({dummy_h160()})))"
+        f"or_b(c:pk_k({dummy_pk()}),a:and_n(c:pk_k({dummy_pk()}),c:pk_k({dummy_pk()})))"
     )
     roundtrip(f"or_b(c:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}))")
     roundtrip(f"or_d(c:pk_k({dummy_pk()}),c:pk_k({dummy_pk()}))")
@@ -104,10 +131,10 @@ def test_simple_sanity_checks():
     roundtrip(
         f"t:or_c(c:pk_k({dummy_pk()}),and_v(vc:pk_k({dummy_pk()}),or_c(c:pk_k({dummy_pk()}),v:sha256({dummy_h256()}))))"
     )
-    roundtrip(f"or_i(and_v(vc:pk_h({dummy_h160()}),hash256({dummy_h256()})),older(20))")
+    roundtrip(f"or_i(and_v(vc:pk_k({dummy_pk()}),hash256({dummy_h256()})),older(20))")
     roundtrip(f"andor(c:pk_k({dummy_pk()}),older(25),c:pk_k({dummy_pk()}))")
     roundtrip(
-        f"andor(c:pk_k({dummy_pk()}),or_i(and_v(vc:pk_h({dummy_h160()}),ripemd160({dummy_h160()})),older(35)),c:pk_k({dummy_pk()}))"
+        f"andor(c:pk_k({dummy_pk()}),or_i(and_v(vc:pk_k({dummy_pk()}),ripemd160({dummy_h160()})),older(35)),c:pk_k({dummy_pk()}))"
     )
     roundtrip(
         f"thresh(3,c:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}),sc:pk_k({dummy_pk()}),sndv:after(30))"
@@ -143,6 +170,8 @@ def test_compat_valid():
             ms_str, hexscript = line.strip().split(" ")
             ms = miniscript_from_str(ms_str)
             assert ms.script.hex() == hexscript
+            ms.satisfy(SatisfactionMaterial())
+            ms.dissatisfy()
 
 
 def test_compat_invalid():
@@ -497,3 +526,449 @@ def test_satisfaction_cost():
         ms = miniscript_from_str(ms_str)
         assert ms.exec_info.ops_count == op_cost
         assert ms.exec_info.sat_elems == sat_cost
+
+
+def test_satisfy_simple_combs():
+    """Test the satisfaction logic of most fragments and simple combinations of them."""
+    hd = BIP32.from_seed(os.urandom(32))
+    keypairs = {
+        hd.get_privkey_from_path([i]): hd.get_pubkey_from_path([i]) for i in range(20)
+    }
+
+    timelock = 11
+    preimage = bytes(32)
+    keys = [MiniscriptKey(k) for k in keypairs.values()]
+    dummy_sigs = []
+    for privkey, pubkey in keypairs.items():
+        dummy_sigs.append(
+            (pubkey, coincurve.PrivateKey(privkey).sign(bytes(32), hasher=None))
+        )
+    sat_material = SatisfactionMaterial()
+    for h_func, digest in [
+        (fragments.Sha256, sha256(preimage)),
+        (fragments.Hash256, hash256(preimage)),
+        (fragments.Ripemd160, ripemd160(preimage)),
+        (fragments.Hash160, hash160(preimage.hex())),
+    ]:
+        for tl_func in [fragments.Older, fragments.After]:
+            for multi_threshold in range(1, 21):
+                h_frag = h_func(digest)
+                # Without the preimage in the material, it can't satisfy it
+                assert h_frag.satisfy(sat_material).witness is None
+                # Now if we set it it'll be able to
+                sat_material.preimages[h_frag.digest] = preimage
+                assert h_frag.satisfy(sat_material).witness == [preimage]
+                or_frag = fragments.OrB(
+                    h_frag,
+                    fragments.WrapS(
+                        fragments.WrapD(fragments.WrapV(fragments.Older(timelock)))
+                    ),
+                )
+                # Without the ability to satisfy the timelock, it'll choose the hash path.
+                assert or_frag.satisfy(sat_material).witness == [b"", preimage]
+                # But if we tell it the timelock can be satisfied it'll still not choose that since
+                # dissatisfying a hash is malleable.
+                if tl_func is fragments.Older:
+                    sat_material.max_sequence = timelock
+                if tl_func is fragments.After:
+                    sat_material.max_sequence = timelock
+                assert or_frag.satisfy(sat_material).witness == [b"", preimage]
+                # Now if we make it non-malleably dissatisfiable, it'll choose the timelock path as it's cheaper.
+                h_frag = fragments.WrapJ(h_frag)
+                or_frag = fragments.OrB(
+                    h_frag,
+                    fragments.WrapS(
+                        fragments.WrapD(fragments.WrapV(fragments.Older(timelock)))
+                    ),
+                )
+                assert or_frag.satisfy(sat_material).witness == [b"\x01", b""]
+                # It won't be able to satisfy the and_v() without enough sigs
+                frag = fragments.AndV(
+                    fragments.WrapV(fragments.Multi(multi_threshold, keys)),
+                    or_frag,
+                )
+                assert frag.satisfy(sat_material).witness is None
+                for pubkey, sig in dummy_sigs[: multi_threshold - 1]:
+                    sat_material.signatures[pubkey] = sig
+                assert frag.satisfy(sat_material).witness is None
+                # Just enough sigs is sufficient
+                pubkey, sig = dummy_sigs[multi_threshold - 1]
+                sat_material.signatures[pubkey] = sig
+                assert frag.satisfy(sat_material).witness == [b"\x01", b"", b""] + list(
+                    sat_material.signatures.values()
+                )
+                # Now if we remove the timelocks it'll get back to satisfy using the hash preimage
+                sat_material.max_sequence = 0
+                sat_material.max_timelock = 0
+                assert (
+                    frag.satisfy(sat_material).witness
+                    == [
+                        b"",
+                        preimage,
+                        b"",
+                    ]
+                    + list(sat_material.signatures.values())
+                )
+                sat_material.clear()
+
+    sat_material = SatisfactionMaterial()
+    pk_frag_a = fragments.Pk(keys[0])
+    pk_frag_b = fragments.Pk(keys[1])
+    pkh_frag = fragments.Pkh(keys[2])
+    or_i_frag = fragments.OrI(pk_frag_a, pkh_frag)
+    # No signature, no satisfaction.
+    assert or_i_frag.satisfy(sat_material).witness is None
+    # Need only one side for having a satisfaction
+    pubkey, sig = dummy_sigs[2]
+    sat_material.signatures[pubkey] = sig
+    assert or_i_frag.satisfy(sat_material).witness == [sig, pubkey, b""]
+    # However if the pk() satisfaction is also available, it'll choose it as it's smaller
+    pubkey, sig = dummy_sigs[0]
+    sat_material.signatures[pubkey] = sig
+    assert or_i_frag.satisfy(sat_material).witness == [sig, b"\x01"]
+    # If we add a requirement for another, it'll fail without the sig and succeed with it
+    and_b_frag = fragments.AndB(
+        fragments.WrapC(or_i_frag), fragments.WrapA(fragments.WrapC(pk_frag_b))
+    )
+    assert and_b_frag.satisfy(sat_material).witness is None
+    pubkey2, sig2 = dummy_sigs[1]
+    sat_material.signatures[pubkey2] = sig2
+    assert and_b_frag.satisfy(sat_material).witness == [
+        sig2,
+        sig,
+        b"\x01",
+    ]
+    sat_material.clear()
+
+    check_pk_a = fragments.WrapC(pk_frag_a)
+    check_pk_b = fragments.WrapC(pk_frag_b)
+    or_c_frag = fragments.OrC(check_pk_a, fragments.WrapV(check_pk_b))
+    assert or_c_frag.satisfy(sat_material).witness is None
+    pubkey, sig = dummy_sigs[0]
+    sat_material.signatures[pubkey] = sig
+    assert or_c_frag.satisfy(sat_material).witness == [sig]
+    pubkey2, sig2 = dummy_sigs[1]
+    sat_material.signatures[pubkey2] = sig2
+    assert or_c_frag.satisfy(sat_material).witness == [sig]
+    del sat_material.signatures[pubkey]
+    assert or_c_frag.satisfy(sat_material).witness == [sig2, b""]
+    sat_material.clear()
+
+    check_pkh_c = fragments.WrapC(pkh_frag)
+    check_pk_d = fragments.WrapC(fragments.Pk(keys[3]))
+    check_pk_e = fragments.WrapC(fragments.Pk(keys[4]))
+    or_d_frag = fragments.OrD(check_pk_a, check_pk_b)
+    andor_frag = fragments.AndOr(
+        check_pkh_c, fragments.WrapN(fragments.After(1_000)), check_pk_d
+    )
+    thresh_frag = fragments.Thresh(
+        1,
+        [
+            or_d_frag,
+            fragments.WrapA(andor_frag),
+            fragments.WrapS(check_pk_e),
+        ],
+    )
+    assert thresh_frag.satisfy(sat_material).witness is None
+    # Add the sig to satisfy the last sub
+    pubkey_e, sig_e = dummy_sigs[4]
+    sat_material.signatures[pubkey_e] = sig_e
+    assert thresh_frag.satisfy(sat_material).witness == [
+        sig_e,  # pk E
+        b"",  # pk D
+        b"",  # pkh C
+        pkh_frag.pubkey.bytes(),  # pkh C
+        b"",  # pk B
+        b"",  # pk A
+    ]
+    # With a larger threshold, doesn't work
+    thresh_frag = fragments.Thresh(
+        2,
+        [
+            or_d_frag,
+            fragments.WrapA(andor_frag),
+            fragments.WrapS(check_pk_e),
+        ],
+    )
+    assert thresh_frag.satisfy(sat_material).witness is None
+    # Satisfy the first sub, in the two available ways
+    pubkey_a, sig_a = dummy_sigs[0]
+    sat_material.signatures[pubkey_a] = sig_a
+    assert thresh_frag.satisfy(sat_material).witness == [
+        sig_e,  # pk E
+        b"",  # pk D
+        b"",  # pkh C
+        pkh_frag.pubkey.bytes(),  # pkh C
+        sig_a,  # pk A
+    ]
+    pubkey_b, sig_b = dummy_sigs[1]
+    sat_material.signatures[pubkey_b] = sig_b
+    del sat_material.signatures[pubkey_a]
+    assert thresh_frag.satisfy(sat_material).witness == [
+        sig_e,  # pk E
+        b"",  # pk D
+        b"",  # pkh C
+        pkh_frag.pubkey.bytes(),  # pkh C
+        sig_b,  # pk B
+        b"",  # pk A
+    ]
+    # Now get the threshold at a maximum, we need to satisfy the andor()
+    thresh_frag = fragments.Thresh(
+        3,
+        [
+            or_d_frag,
+            fragments.WrapA(andor_frag),
+            fragments.WrapS(check_pk_e),
+        ],
+    )
+    assert thresh_frag.satisfy(sat_material).witness is None
+    pubkey_d, sig_d = dummy_sigs[3]
+    sat_material.signatures[pubkey_d] = sig_d
+    assert thresh_frag.satisfy(sat_material).witness == [
+        sig_e,  # pk E
+        sig_d,  # pk D
+        b"",  # pkh C
+        pkh_frag.pubkey.bytes(),  # pkh C
+        sig_b,  # pk B
+        b"",  # pk A
+    ]
+    del sat_material.signatures[pubkey_d]
+    pubkey_c, sig_c = dummy_sigs[2]
+    sat_material.signatures[pubkey_c] = sig_c
+    assert thresh_frag.satisfy(sat_material).witness is None
+    sat_material.max_lock_time = 1_000
+    assert thresh_frag.satisfy(sat_material).witness == [
+        sig_e,  # pk E
+        sig_c,  # pkh C
+        pubkey_c,  # pkh C
+        sig_b,  # pk B
+        b"",  # pk A
+    ]
+
+
+def sat_test(fragment, keypairs={}, max_sequence=0, max_lock_time=0):
+    """Test a fragment's satisfaction against libbitcoinconsensus."""
+    amount = 10_000
+    txid = bytes.fromhex(
+        "652c60ec08280356e8c78be9bf4d44276acef3189ba8223e426b757aeabd66ad"
+    )
+
+    # Create a P2WSH scriptPubKey, and a dummy transaction spending it
+    script_pubkey = CScriptBitcoinTx([0, sha256(fragment.script)])
+    txin_b = CMutableTxIn(COutPoint(txid, 0), nSequence=max_sequence)
+    txout_b = CMutableTxOut(amount - 1_000, CScript([0, sha256(fragment.script)]))
+    tx_b = CMutableTransaction([txin_b], [txout_b], nLockTime=max_lock_time)
+
+    # Now populate the "signing data". Tell the satisfier about the available timelocks
+    # and signatures. Since we'll check them, produce valid sigs for the dummy tx.
+    sat_material = SatisfactionMaterial(
+        max_sequence=max_sequence, max_lock_time=max_lock_time
+    )
+    sighash = RawBitcoinSignatureHash(
+        script=fragment.script,
+        txTo=tx_b,
+        inIdx=0,
+        hashtype=1,  # SIGHASH_ALL
+        amount=amount,
+        sigversion=SIGVERSION_WITNESS_V0,
+    )[0]
+    for pubkey, privkey in keypairs.items():
+        sig = coincurve.PrivateKey(privkey).sign(sighash, hasher=None)
+        sat_material.signatures[pubkey] = sig + b"\x01"  # SIGHASH_ALL
+    witness_stack = CScriptWitness(
+        fragment.satisfy(sat_material).witness + [fragment.script]
+    )
+    # VerifyScript might be able to debug some very simple scripts, but is buggy and
+    # outdated (a failing CHECKSIG doesn't return the empty vector, no implementation
+    # of CSV and CLTV, and more that i didn't bother to trace down) so it makes it hard
+    # for anything that is non-trivial. TODO: write our own interpreter w/ the OPs used
+    # by Miniscript.
+    # from bitcointx.core.scripteval import VerifyScript
+    # VerifyScript(
+    # scriptSig=txin_b.scriptSig,
+    # scriptPubKey=txout_a.scriptPubKey,
+    # txTo=tx_b,
+    # inIdx=0,
+    # amount=amount,
+    # witness=witness_stack,
+    # )
+
+    # Finally check it against libbitcoinconsensus. Note this is missing Taproot's flags
+    # but we don't care as we only support P2WSH for now.
+    ConsensusVerifyScript(
+        scriptSig=txin_b.scriptSig,
+        scriptPubKey=script_pubkey,
+        txTo=tx_b,
+        inIdx=0,
+        amount=amount,
+        witness=witness_stack,
+        flags=BITCOINCONSENSUS_ACCEPTED_FLAGS,
+    )
+    sat_material.clear()
+
+
+def test_satisfaction_validity():
+    """Test the validity of various fragments' satisfaction against libbitcoinconsensus"""
+    hd = BIP32.from_seed(os.urandom(32))
+    keypairs = {
+        hd.get_pubkey_from_path([i]): hd.get_privkey_from_path([i]) for i in range(20)
+    }
+    pubkeys = list(keypairs.keys())
+
+    sat_test(fragments.Just1())
+
+    pk_frag = fragments.WrapC(fragments.Pk(MiniscriptKey(pubkeys[0])))
+    pk_keypairs = {pubkeys[0]: keypairs[pubkeys[0]]}
+    sat_test(
+        pk_frag,
+        keypairs=pk_keypairs,
+    )
+
+    pkh_frag = fragments.WrapC(fragments.Pkh(MiniscriptKey(pubkeys[1])))
+    pkh_keypairs = {pubkeys[1]: keypairs[pubkeys[1]]}
+    sat_test(
+        pkh_frag,
+        keypairs=pkh_keypairs,
+    )
+
+    older_frag = fragments.Older(2)
+    sat_test(older_frag, max_sequence=2)
+
+    after_frag = fragments.After(2)
+    sat_test(after_frag, max_lock_time=2)
+
+    multi_keys, multi_keypairs = [], {}
+    for n in range(1, 21):
+        multi_keys.append(MiniscriptKey(pubkeys[n - 1]))
+        multi_keypairs[pubkeys[n - 1]] = keypairs[pubkeys[n - 1]]
+        for m in range(1, n):
+            sat_test(
+                fragments.Multi(m, multi_keys),
+                keypairs=multi_keypairs,
+            )
+
+    andv_frag = fragments.AndV(fragments.WrapV(pk_frag), pkh_frag)
+    andv_keypairs = dict(
+        chain.from_iterable(d.items() for d in [pk_keypairs, pkh_keypairs])
+    )
+    sat_test(andv_frag, keypairs=andv_keypairs)
+
+    multi_keys = [MiniscriptKey(key) for key in pubkeys[1:3]]
+    and_b_keypairs = {pub: keypairs[pub] for pub in pubkeys[:2]}
+    and_b_frag = fragments.AndB(
+        pk_frag,
+        fragments.WrapA(fragments.Multi(1, multi_keys)),
+    )
+    sat_test(
+        and_b_frag,
+        keypairs=and_b_keypairs,
+    )
+
+    or_b_frag = fragments.OrB(
+        pk_frag,
+        fragments.WrapA(fragments.Multi(1, multi_keys)),
+    )
+    or_b_keypairs = {pub: keypairs[pub] for pub in pubkeys[:1]}
+    sat_test(
+        or_b_frag,
+        keypairs=or_b_keypairs,
+    )
+    or_b_keypairs = {pub: keypairs[pub] for pub in pubkeys[1:2]}
+    sat_test(
+        or_b_frag,
+        keypairs=or_b_keypairs,
+    )
+    or_b_keypairs = {pub: keypairs[pub] for pub in pubkeys[2:3]}
+    sat_test(
+        or_b_frag,
+        keypairs=or_b_keypairs,
+    )
+
+    or_c_frag = fragments.OrC(pk_frag, fragments.WrapV(pkh_frag))
+    or_c_keypairs = {pub: keypairs[pub] for pub in pubkeys[:1]}
+    sat_test(
+        fragments.WrapT(or_c_frag),
+        keypairs=or_c_keypairs,
+    )
+    or_c_keypairs = {pub: keypairs[pub] for pub in pubkeys[1:2]}
+    sat_test(
+        fragments.WrapT(or_c_frag),
+        keypairs=or_c_keypairs,
+    )
+
+    or_d_frag = fragments.OrD(pk_frag, pkh_frag)
+    or_d_keypairs = {pub: keypairs[pub] for pub in pubkeys[:1]}
+    sat_test(
+        or_d_frag,
+        keypairs=or_d_keypairs,
+    )
+    or_d_keypairs = {pub: keypairs[pub] for pub in pubkeys[1:2]}
+    sat_test(
+        or_d_frag,
+        keypairs=or_d_keypairs,
+    )
+
+    multi_keys = [MiniscriptKey(key) for key in pubkeys[2:5]]
+    multi_frag = fragments.Multi(2, multi_keys)
+    or_i_frag = fragments.OrI(multi_frag, pkh_frag)
+    or_i_keypairs = {pub: keypairs[pub] for pub in pubkeys[1:2]}
+    sat_test(
+        or_i_frag,
+        keypairs=or_i_keypairs,
+    )
+    or_i_keypairs = {pub: keypairs[pub] for pub in pubkeys[2:4]}
+    sat_test(
+        or_i_frag,
+        keypairs=or_i_keypairs,
+    )
+
+    andor_frag = fragments.AndOr(pk_frag, pkh_frag, multi_frag)
+    andor_keypairs = {pub: keypairs[pub] for pub in pubkeys[0:2]}
+    sat_test(
+        andor_frag,
+        keypairs=andor_keypairs,
+    )
+    andor_keypairs = {pub: keypairs[pub] for pub in pubkeys[2:4]}
+    sat_test(
+        andor_frag,
+        keypairs=andor_keypairs,
+    )
+    andor_keypairs = {pub: keypairs[pub] for pub in pubkeys[3:5]}
+    sat_test(
+        andor_frag,
+        keypairs=andor_keypairs,
+    )
+
+    # A CMS made verify, and back Wdu, for the purpose of exercising various
+    # fragments.
+    convoluted_cms = fragments.WrapA(
+        fragments.AndB(
+            fragments.WrapU(fragments.WrapT(fragments.WrapV(multi_frag))),
+            fragments.WrapA(fragments.WrapL(fragments.Just1())),
+        ),
+    )
+    thresh_frag = fragments.Thresh(
+        1, [pkh_frag, fragments.WrapS(pk_frag), convoluted_cms]
+    )
+    thresh_keypairs = {pub: keypairs[pub] for pub in pubkeys[0:1]}
+    sat_test(thresh_frag, keypairs=thresh_keypairs)
+    thresh_keypairs = {pub: keypairs[pub] for pub in pubkeys[1:2]}
+    sat_test(thresh_frag, keypairs=thresh_keypairs)
+    thresh_keypairs = {pub: keypairs[pub] for pub in pubkeys[3:5]}
+    sat_test(thresh_frag, keypairs=thresh_keypairs)
+    thresh_frag2 = fragments.Thresh(
+        2, [pkh_frag, fragments.WrapS(pk_frag), convoluted_cms]
+    )
+    thresh_keypairs = {pub: keypairs[pub] for pub in pubkeys[0:2]}
+    sat_test(thresh_frag2, keypairs=thresh_keypairs)
+    thresh_keypairs = {pub: keypairs[pub] for pub in pubkeys[1:4]}
+    sat_test(thresh_frag2, keypairs=thresh_keypairs)
+    thresh_keypairs = {pub: keypairs[pub] for pub in pubkeys[:1] + pubkeys[2:4]}
+    sat_test(thresh_frag2, keypairs=thresh_keypairs)
+    thresh_frag = fragments.Thresh(
+        3, [pkh_frag, fragments.WrapS(pk_frag), convoluted_cms]
+    )
+    thresh_keypairs = {pub: keypairs[pub] for pub in pubkeys[:4]}
+    sat_test(thresh_frag, keypairs=thresh_keypairs)
+    thresh_keypairs = {pub: keypairs[pub] for pub in pubkeys[:3] + pubkeys[4:]}
+    sat_test(thresh_frag, keypairs=thresh_keypairs)

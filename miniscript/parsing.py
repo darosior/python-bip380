@@ -160,7 +160,7 @@ def parse_term_2_elems(expr_list, idx):
         return expr_list
 
 
-def parse_term_5_elems(expr_list, idx):
+def parse_term_5_elems(expr_list, idx, pkh_preimages={}):
     """
     Try to parse a terminal node from five elements of {expr_list}, starting
     from {idx}.
@@ -176,7 +176,10 @@ def parse_term_5_elems(expr_list, idx):
     if expr_list[idx + 3 : idx + 5] != [OP_EQUAL, OP_VERIFY]:
         return
 
-    node = Pkh(expr_list[idx + 2])
+    key_hash = expr_list[idx + 2]
+    key = pkh_preimages.get(key_hash)
+    assert key is not None  # TODO: have a real error here
+    node = Pkh(key)
     expr_list[idx : idx + 5] = [node]
     return expr_list
 
@@ -529,8 +532,12 @@ def parse_expr_list(expr_list):
     raise Exception("Malformed miniscript")
 
 
-def miniscript_from_script(script):
-    """Construct miniscript node from script"""
+def miniscript_from_script(script, pkh_preimages={}):
+    """Construct miniscript node from script.
+
+    :param script: The Bitcoin Script to decode.
+    :param pkh_preimage: A mapping from keyhash to key to decode pk_h() fragments.
+    """
     expr_list = decompose_script(script)
     expr_list_len = len(expr_list)
 
@@ -546,7 +553,7 @@ def miniscript_from_script(script):
                 expr_list_len = len(expr_list)
 
         if expr_list_len - idx >= 5:
-            new_expr_list = parse_term_5_elems(expr_list, idx)
+            new_expr_list = parse_term_5_elems(expr_list, idx, pkh_preimages)
             if new_expr_list is not None:
                 expr_list = new_expr_list
                 expr_list_len = len(expr_list)

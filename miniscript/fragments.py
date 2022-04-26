@@ -5,12 +5,13 @@ Each element correspond to a Bitcoin Script fragment, and has various type prope
 See the Miniscript website for the specification of the type system: https://bitcoin.sipa.be/miniscript/.
 """
 
+import copy
 import hashlib
 
 from .errors import MiniscriptNodeCreationError
 from .key import MiniscriptKey
 from .property import Property
-from .satisfaction import ExecutionInfo
+from .satisfaction import ExecutionInfo, Satisfaction
 from .script import (
     CScript,
     OP_1,
@@ -100,6 +101,20 @@ class Node:
     def script(self):
         return CScript(self._script)
 
+    def satisfy(self, sat_material):
+        """Get the satisfaction for this fragment.
+
+        :param sat_material: a SatisfactionMaterial containing available data to satisfy
+                             challenges.
+        """
+        # Needs to be implemented by derived classes.
+        raise NotImplementedError
+
+    def dissatisfy(self):
+        """Get the dissatisfaction for this fragment."""
+        # Needs to be implemented by derived classes.
+        raise NotImplementedError
+
 
 class Just0(Node):
     def __init__(self):
@@ -118,6 +133,12 @@ class Just0(Node):
         self.rel_timelocks = False
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(0, 0, None, 0)
+
+    def satisfy(self, sat_material):
+        return Satisfaction.unavailable()
+
+    def dissatisfy(self):
+        return Satisfaction(witness=[])
 
     def __repr__(self):
         return "0"
@@ -141,11 +162,17 @@ class Just1(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(0, 0, 0, None)
 
+    def satisfy(self, sat_material):
+        return Satisfaction(witness=[])
+
+    def dissatisfy(self):
+        return Satisfaction.unavailable()
+
     def __repr__(self):
         return "1"
 
 
-# TODO: maybe have parent classes like "PkNode", "HashNode"
+# TODO: A PkNode class to inherit those two from?
 class Pk(Node):
     def __init__(self, pubkey):
         Node.__init__(self)
@@ -170,29 +197,30 @@ class Pk(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(0, 0, 0, 0)
 
+    def satisfy(self, sat_material):
+        sig = sat_material.signatures.get(self.pubkey.bytes())
+        if sig is None:
+            return Satisfaction.unavailable()
+        return Satisfaction([sig], has_sig=True)
+
+    def dissatisfy(self):
+        return Satisfaction(witness=[b""])
+
     def __repr__(self):
         return f"pk_k({self.pubkey.bytes().hex()})"
 
 
 class Pkh(Node):
-    def __init__(self, pk_or_pkh):
+    # FIXME: should we support a hash here, like rust-bitcoin? I don't think it's safe.
+    def __init__(self, pubkey):
         Node.__init__(self)
 
-        if (
-            isinstance(pk_or_pkh, bytes)
-            and len(pk_or_pkh) == 33
-            or isinstance(pk_or_pkh, str)
-            and len(pk_or_pkh) == 66
-        ):
-            self.pk_or_pkh = MiniscriptKey(pk_or_pkh)
-        elif isinstance(pk_or_pkh, bytes) and len(pk_or_pkh) == 20:
-            self.pk_or_pkh = pk_or_pkh
-        elif isinstance(pk_or_pkh, str) and len(pk_or_pkh) == 40:
-            self.pk_or_pkh = bytes.fromhex(pk_or_pkh)
-        elif isinstance(pk_or_pkh, MiniscriptKey):
-            self.pk_or_pkh = pk_or_pkh
+        if isinstance(pubkey, bytes) or isinstance(pubkey, str):
+            self.pubkey = MiniscriptKey(pubkey)
+        elif isinstance(pubkey, MiniscriptKey):
+            self.pubkey = pubkey
         else:
-            raise MiniscriptNodeCreationError("Invalid pubkey or hash for pk_h node")
+            raise MiniscriptNodeCreationError("Invalid pubkey for pk_k node")
         self._script = [OP_DUP, OP_HASH160, self.pk_hash(), OP_EQUALVERIFY]
 
         self.p = Property("Knud")
@@ -207,22 +235,21 @@ class Pkh(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(3, 0, 1, 1)
 
+    def satisfy(self, sat_material):
+        sig = sat_material.signatures.get(self.pubkey.bytes())
+        if sig is None:
+            return Satisfaction.unavailable()
+        return Satisfaction(witness=[sig, self.pubkey.bytes()], has_sig=True)
+
+    def dissatisfy(self):
+        return Satisfaction(witness=[b"", self.pubkey.bytes()])
+
     def __repr__(self):
-        if isinstance(self.pk_or_pkh, MiniscriptKey):
-            return f"pk_h({self.pk_or_pkh.bytes().hex()})"
-        else:
-            assert isinstance(self.pk_or_pkh, bytes)
-            return f"pk_h({self.pk_or_pkh.hex()})"
+        return f"pk_h({self.pubkey.bytes().hex()})"
 
     def pk_hash(self):
-        if isinstance(self.pk_or_pkh, MiniscriptKey):
-            return hash160(self.pk_or_pkh.bytes())
-        assert isinstance(self.pk_or_pkh, bytes)
-        if len(self.pk_or_pkh) == 20:
-            return self.pk_or_pkh
-        else:
-            assert len(self.pk_or_pkh) == 33
-            return hash160(self.pk_or_pkh)
+        assert isinstance(self.pubkey, MiniscriptKey)
+        return hash160(self.pubkey.bytes())
 
 
 class Older(Node):
@@ -244,6 +271,14 @@ class Older(Node):
         self.abs_timelocks = False
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(1, 0, 0, None)
+
+    def satisfy(self, sat_material):
+        if sat_material.max_sequence < self.value:
+            return Satisfaction.unavailable()
+        return Satisfaction(witness=[])
+
+    def dissatisfy(self):
+        return Satisfaction.unavailable()
 
     def __repr__(self):
         return f"older({self.value})"
@@ -269,10 +304,19 @@ class After(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(1, 0, 0, None)
 
+    def satisfy(self, sat_material):
+        if sat_material.max_lock_time < self.value:
+            return Satisfaction.unavailable()
+        return Satisfaction(witness=[])
+
+    def dissatisfy(self):
+        return Satisfaction.unavailable()
+
     def __repr__(self):
         return f"after({self.value})"
 
 
+# TODO: a superclass HashNode makes a lot of sense given the amount of shared code.
 class Sha256(Node):
     def __init__(self, digest):
         assert isinstance(digest, bytes) and len(digest) == 32
@@ -292,6 +336,16 @@ class Sha256(Node):
         self.rel_timelocks = False
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(4, 0, 1, None)
+
+    def satisfy(self, sat_material):
+        preimage = sat_material.preimages.get(self.digest)
+        if preimage is None:
+            return Satisfaction.unavailable()
+        return Satisfaction(witness=[preimage])
+
+    def dissatisfy(self):
+        return Satisfaction.unavailable()
+        return Satisfaction(witness=[b""])
 
     def __repr__(self):
         return f"sha256({self.digest.hex()})"
@@ -317,6 +371,16 @@ class Hash256(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(4, 0, 1, None)
 
+    def satisfy(self, sat_material):
+        preimage = sat_material.preimages.get(self.digest)
+        if preimage is None:
+            return Satisfaction.unavailable()
+        return Satisfaction(witness=[preimage])
+
+    def dissatisfy(self):
+        return Satisfaction.unavailable()
+        return Satisfaction(witness=[b""])
+
     def __repr__(self):
         return f"hash256({self.digest.hex()})"
 
@@ -341,6 +405,16 @@ class Ripemd160(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(4, 0, 1, None)
 
+    def satisfy(self, sat_material):
+        preimage = sat_material.preimages.get(self.digest)
+        if preimage is None:
+            return Satisfaction.unavailable()
+        return Satisfaction(witness=[preimage])
+
+    def dissatisfy(self):
+        return Satisfaction.unavailable()
+        return Satisfaction(witness=[b""])
+
     def __repr__(self):
         return f"ripemd160({self.digest.hex()})"
 
@@ -364,6 +438,16 @@ class Hash160(Node):
         self.rel_timelocks = False
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(4, 0, 1, None)
+
+    def satisfy(self, sat_material):
+        preimage = sat_material.preimages.get(self.digest)
+        if preimage is None:
+            return Satisfaction.unavailable()
+        return Satisfaction(witness=[preimage])
+
+    def dissatisfy(self):
+        return Satisfaction.unavailable()
+        return Satisfaction(witness=[b""])
 
     def __repr__(self):
         return f"hash160({self.digest.hex()})"
@@ -390,6 +474,22 @@ class Multi(Node):
         self.rel_timelocks = False
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(1, len(keys), 1 + k, 1 + k)
+
+    def satisfy(self, sat_material):
+        sigs = []
+        for key in self.keys:
+            sig = sat_material.signatures.get(key.bytes())
+            if sig is not None:
+                assert isinstance(sig, bytes)
+                sigs.append(sig)
+            if len(sigs) == self.k:
+                break
+        if len(sigs) < self.k:
+            return Satisfaction.unavailable()
+        return Satisfaction(witness=[b""] + sigs, has_sig=True)
+
+    def dissatisfy(self):
+        return Satisfaction(witness=[b""] * (self.k + 1))
 
     def __repr__(self):
         return (
@@ -430,7 +530,11 @@ class AndV(Node):
         self.exec_info = ExecutionInfo.from_concat(sub_x.exec_info, sub_y.exec_info)
         self.exec_info.set_undissatisfiable()  # it's V.
 
-        # TODO: satisfaction
+    def satisfy(self, sat_material):
+        return Satisfaction.from_concat(sat_material, *self.subs)
+
+    def dissatisfy(self):
+        return Satisfaction.unavailable()  # it's V.
 
     def __repr__(self):
         return f"and_v({','.join(map(str, self.subs))})"
@@ -481,6 +585,12 @@ class AndB(Node):
             sub_x.exec_info, sub_y.exec_info, ops_count=1
         )
 
+    def satisfy(self, sat_material):
+        return Satisfaction.from_concat(sat_material, self.subs[0], self.subs[1])
+
+    def dissatisfy(self):
+        return self.subs[1].dissatisfy() + self.subs[0].dissatisfy()
+
     def __repr__(self):
         return f"and_b({','.join(map(str, self.subs))})"
 
@@ -514,7 +624,13 @@ class OrB(Node):
             sub_x.exec_info, sub_z.exec_info, ops_count=1, disjunction=True
         )
 
-        # TODO: satisfaction
+    def satisfy(self, sat_material):
+        return Satisfaction.from_concat(
+            sat_material, self.subs[0], self.subs[1], disjunction=True
+        )
+
+    def dissatisfy(self):
+        return self.subs[1].dissatisfy() + self.subs[0].dissatisfy()
 
     def __repr__(self):
         return f"or_b({','.join(map(str, self.subs))})"
@@ -551,7 +667,11 @@ class OrC(Node):
         )
         self.exec_info.set_undissatisfiable()  # it's V.
 
-        # TODO: satisfaction
+    def satisfy(self, sat_material):
+        return Satisfaction.from_or_uneven(sat_material, self.subs[0], self.subs[1])
+
+    def dissatisfy(self):
+        return Satisfaction.unavailable()  # it's V.
 
     def __repr__(self):
         return f"or_c({','.join(map(str, self.subs))})"
@@ -590,7 +710,11 @@ class OrD(Node):
             sub_x.exec_info, sub_z.exec_info, ops_count=3
         )
 
-        # TODO: satisfaction
+    def satisfy(self, sat_material):
+        return Satisfaction.from_or_uneven(sat_material, self.subs[0], self.subs[1])
+
+    def dissatisfy(self):
+        return self.subs[1].dissatisfy() + self.subs[0].dissatisfy()
 
     def __repr__(self):
         return f"or_d({','.join(map(str, self.subs))})"
@@ -628,6 +752,16 @@ class OrI(Node):
         self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
         self.exec_info = ExecutionInfo.from_or_even(
             sub_x.exec_info, sub_z.exec_info, ops_count=3
+        )
+
+    def satisfy(self, sat_material):
+        return (self.subs[0].satisfy(sat_material) + Satisfaction([b"\x01"])) | (
+            self.subs[1].satisfy(sat_material) + Satisfaction([b""])
+        )
+
+    def dissatisfy(self):
+        return (self.subs[0].dissatisfy() + Satisfaction(witness=[b"\x01"])) | (
+            self.subs[1].dissatisfy() + Satisfaction(witness=[b""])
         )
 
     def __repr__(self):
@@ -682,9 +816,9 @@ class AndOr(Node):
         self.rel_heightlocks = any(sub.rel_heightlocks for sub in self.subs)
         self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
         self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
-        # X and Y, or Z. So we have a mix if either X itself contains a mix, or
-        # there is a mix between Y and Z.
-        self.no_timelock_mix = sub_z.no_timelock_mix and not (
+        # X and Y, or Z. So we have a mix if any contain a timelock mix, or
+        # there is a mix between X and Y.
+        self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs) and not (
             any(sub.rel_timelocks for sub in [sub_x, sub_y])
             and any(sub.rel_heightlocks for sub in [sub_x, sub_y])
             or any(sub.abs_timelocks for sub in [sub_x, sub_y])
@@ -694,7 +828,15 @@ class AndOr(Node):
             sub_x.exec_info, sub_y.exec_info, sub_z.exec_info, ops_count=3
         )
 
-        # TODO: satisfaction
+    def satisfy(self, sat_material):
+        # (A and B) or (!A and C)
+        return (
+            self.subs[1].satisfy(sat_material) + self.subs[0].satisfy(sat_material)
+        ) | (self.subs[2].satisfy(sat_material) + self.subs[0].dissatisfy())
+
+    def dissatisfy(self):
+        # Dissatisfy X and Z
+        return self.subs[2].dissatisfy() + self.subs[0].dissatisfy()
 
     def __repr__(self):
         return f"andor({','.join(map(str, self.subs))})"
@@ -716,9 +858,9 @@ class Thresh(Node):
 
         self.k = k
         self.subs = subs
-        self._script = subs[0]._script
+        self._script = copy.copy(subs[0]._script)
         for sub in subs[1:]:
-            self._script += [*sub._script, OP_ADD]
+            self._script += sub._script + [OP_ADD]
         self._script += [k, OP_EQUAL]
 
         all_z = True
@@ -774,10 +916,19 @@ class Thresh(Node):
             )
         self.exec_info = ExecutionInfo.from_thresh(k, [sub.exec_info for sub in subs])
 
+    def satisfy(self, sat_material):
+        return Satisfaction.from_thresh(sat_material, self.k, self.subs)
+
+    def dissatisfy(self):
+        return sum(
+            [sub.dissatisfy() for sub in self.subs], start=Satisfaction(witness=[])
+        )
+
     def __repr__(self):
         return f"thresh({self.k},{','.join(map(str, self.subs))})"
 
 
+# TODO: make it a method of Node
 def is_wrapper(node):
     """Whether the given node is a wrapper or not."""
     return isinstance(
@@ -785,6 +936,7 @@ def is_wrapper(node):
     )
 
 
+# TODO: a wrapper superclass with default implementation of methods for shared code.
 class WrapA(Node):
     def __init__(self, sub):
         assert sub.p.B
@@ -809,6 +961,12 @@ class WrapA(Node):
             and self.rel_timelocks
         )
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=2)
+
+    def satisfy(self, sat_material):
+        return self.subs[0].satisfy(sat_material)
+
+    def dissatisfy(self):
+        return self.subs[0].dissatisfy()
 
     def __repr__(self):
         if is_wrapper(self.subs[0]):
@@ -840,6 +998,12 @@ class WrapS(Node):
             and self.rel_timelocks
         )
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
+
+    def satisfy(self, sat_material):
+        return self.subs[0].satisfy(sat_material)
+
+    def dissatisfy(self):
+        return self.subs[0].dissatisfy()
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -875,6 +1039,12 @@ class WrapC(Node):
         self.exec_info = ExecutionInfo.from_wrap(
             sub.exec_info, ops_count=1, sat=1, dissat=1
         )
+
+    def satisfy(self, sat_material):
+        return self.subs[0].satisfy(sat_material)
+
+    def dissatisfy(self):
+        return self.subs[0].dissatisfy()
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -922,6 +1092,12 @@ class WrapD(Node):
             sub.exec_info, ops_count=3, sat=1, dissat=1
         )
 
+    def satisfy(self, sat_material):
+        return Satisfaction(witness=[b"\x01"]) + self.subs[0].satisfy(sat_material)
+
+    def dissatisfy(self):
+        return Satisfaction(witness=[b""])
+
     def __repr__(self):
         # Avoid duplicating colons
         if is_wrapper(self.subs[0]):
@@ -962,6 +1138,12 @@ class WrapV(Node):
         verify_cost = int(self._script[-1] == OP_VERIFY)
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=verify_cost)
 
+    def satisfy(self, sat_material):
+        return self.subs[0].satisfy(sat_material)
+
+    def dissatisfy(self):
+        return Satisfaction.unavailable()  # It's V.
+
     def __repr__(self):
         # Avoid duplicating colons
         if is_wrapper(self.subs[0]):
@@ -996,6 +1178,12 @@ class WrapJ(Node):
             sub.exec_info, ops_count=4, dissat=1
         )
 
+    def satisfy(self, sat_material):
+        return self.subs[0].satisfy(sat_material)
+
+    def dissatisfy(self):
+        return Satisfaction(witness=[b""])
+
     def __repr__(self):
         # Avoid duplicating colons
         if is_wrapper(self.subs[0]):
@@ -1027,6 +1215,12 @@ class WrapN(Node):
             and self.rel_timelocks
         )
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
+
+    def satisfy(self, sat_material):
+        return self.subs[0].satisfy(sat_material)
+
+    def dissatisfy(self):
+        return self.subs[0].dissatisfy()
 
     def __repr__(self):
         # Avoid duplicating colons

@@ -25,6 +25,157 @@ def max_optional(a, b):
     return max(a, b)
 
 
+class SatisfactionMaterial:
+    """Data that may be needed in order to satisfy a Minsicript fragment."""
+
+    def __init__(self, preimages={}, signatures={}, max_sequence=0, max_lock_time=0):
+        self.preimages = preimages
+        self.signatures = signatures
+        self.max_sequence = max_sequence
+        self.max_lock_time = max_lock_time
+
+    def clear(self):
+        self.preimages.clear()
+        self.signatures.clear()
+        self.max_sequence = 0
+        self.max_lock_time = 0
+
+    def __repr__(self):
+        return (
+            f"SatisfactionMaterial(preimages: {self.preimages}, signatures: "
+            f"{self.signatures}, max_sequence: {self.max_sequence}, max_lock_time: "
+            f"{self.max_lock_time}"
+        )
+
+
+class Satisfaction:
+    """All information about a satisfaction."""
+
+    def __init__(self, witness, has_sig=False):
+        assert isinstance(witness, list) or witness is None
+        self.witness = witness
+        self.has_sig = has_sig
+        # TODO: we probably need to take into account non-canon sats, as the algorithm
+        # described on the website mandates it:
+        # > Iterate over all the valid satisfactions/dissatisfactions in the table above
+        # > (including the non-canonical ones),
+
+    def __add__(self, other):
+        """Concatenate two satisfactions together."""
+        witness = add_optional(self.witness, other.witness)
+        has_sig = self.has_sig or other.has_sig
+        return Satisfaction(witness, has_sig)
+
+    def __or__(self, other):
+        """Choose between two (dis)satisfactions."""
+        assert isinstance(other, Satisfaction)
+
+        # If one isn't available, return the other one.
+        if self.witness is None:
+            return other
+        if other.witness is None:
+            return self
+
+        # > If among all valid solutions (including DONTUSE ones) more than one does not
+        # > have the HASSIG marker, return DONTUSE, as this is malleable because of reason
+        # > 1.
+        # TODO
+        # if not (self.has_sig or other.has_sig):
+        # return Satisfaction.unavailable()
+
+        # > If instead exactly one does not have the HASSIG marker, return that solution
+        # > because of reason 2.
+        if self.has_sig and not other.has_sig:
+            return other
+        if not self.has_sig and other.has_sig:
+            return self
+
+        # > Otherwise, all not-DONTUSE options are valid, so return the smallest one (in
+        # > terms of witness size).
+        # FIXME: the C++ implem uses number of stack elements
+        if self.size() > other.size():
+            return other
+
+        # > If all valid solutions have the HASSIG marker, but all of them are DONTUSE, return DONTUSE-HASSIG.
+        # TODO
+
+        return self
+
+    def unavailable():
+        return Satisfaction(witness=None)
+
+    def is_unavailable(self):
+        return self.witness is None
+
+    def size(self):
+        return len(self.witness) + sum(len(elem) for elem in self.witness)
+
+    def from_concat(sat_material, sub_a, sub_b, disjunction=False):
+        """Get the satisfaction for a Miniscript whose Script corresponds to a
+        concatenation of two subscripts A and B.
+
+        :param sub_a: The sub-fragment A.
+        :param sub_b: The sub-fragment B.
+        :param disjunction: Whether this fragment has an 'or()' semantic.
+        """
+        if disjunction:
+            return (sub_b.dissatisfy() + sub_a.satisfy(sat_material)) | (
+                sub_b.satisfy(sat_material) + sub_a.dissatisfy()
+            )
+        return sub_b.satisfy(sat_material) + sub_a.satisfy(sat_material)
+
+    def from_or_uneven(sat_material, sub_a, sub_b):
+        """Get the satisfaction for a Miniscript which unconditionally executes a first
+        sub A and only executes B if A was dissatisfied.
+
+        :param sub_a: The sub-fragment A.
+        :param sub_b: The sub-fragment B.
+        """
+        return sub_a.satisfy(sat_material) | (
+            sub_b.satisfy(sat_material) + sub_a.dissatisfy()
+        )
+
+    def from_thresh(sat_material, k, subs):
+        """Get the satisfaction for a Miniscript which satisfies k of the given subs,
+        and dissatisfies all the others.
+
+        :param sat_material: The material to satisfy the challenges.
+        :param k: The number of subs that need to be satisfied.
+        :param subs: The list of all subs of the threshold.
+        """
+        # Pick the k sub-fragments to satisfy, prefering (in order):
+        # 1. Fragments that don't require a signature to be satisfied
+        # 2. Fragments whose satisfaction's size is smaller
+        # Record the unavailable (in either way) ones as we go.
+        arbitrage, unsatisfiable, undissatisfiable = [], [], []
+        for sub in subs:
+            sat, dissat = sub.satisfy(sat_material), sub.dissatisfy()
+            if sat.witness is None:
+                unsatisfiable.append(sub)
+            elif dissat.witness is None:
+                undissatisfiable.append(sub)
+            else:
+                arbitrage.append(
+                    (int(sat.has_sig), len(sat.witness) - len(dissat.witness), sub)
+                )
+
+        # If not enough (dis)satisfactions are available, fail.
+        if len(unsatisfiable) > len(subs) - k or len(undissatisfiable) > k:
+            return Satisfaction.unavailable()
+
+        # Otherwise, satisfy the k most optimal ones.
+        arbitrage = sorted(arbitrage, key=lambda x: x[:2])
+        optimal_sat = undissatisfiable + [a[2] for a in arbitrage] + unsatisfiable
+        to_satisfy = set(optimal_sat[:k])
+        return sum(
+            [
+                sub.satisfy(sat_material) if sub in to_satisfy else sub.dissatisfy()
+                for sub in subs[::-1]
+            ],
+            start=Satisfaction(witness=[]),
+        )
+
+
 class ExecutionInfo:
     """Information about the execution of a Miniscript."""
 
@@ -68,7 +219,7 @@ class ExecutionInfo:
         :param sub_a: The execution information of the subscript A.
         :param sub_b: The execution information of the subscript B.
         :param ops_count: The added number of static OPs added on top.
-        :param disjunction: Whether this fragment as an 'or()' semantic.
+        :param disjunction: Whether this fragment has an 'or()' semantic.
         """
         # Number of static OPs is simple, they are all executed.
         static_ops = sub_a._static_ops_count + sub_b._static_ops_count + ops_count
@@ -130,7 +281,9 @@ class ExecutionInfo:
         # Same. Also, we add a stack element used to tell which branch to take.
         sat_elems = add_optional(max_optional(sub_a.sat_elems, sub_b.sat_elems), 1)
         # Same here.
-        dissat_elems = add_optional(max_optional(sub_a.dissat_elems, sub_b.dissat_elems), 1)
+        dissat_elems = add_optional(
+            max_optional(sub_a.dissat_elems, sub_b.dissat_elems), 1
+        )
 
         return ExecutionInfo(static_ops, dyn_ops, sat_elems, dissat_elems)
 
