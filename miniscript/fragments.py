@@ -7,6 +7,7 @@ See the Miniscript website for the specification of the type system: https://bit
 
 import copy
 import hashlib
+import miniscript.parsing as parsing
 
 from .errors import MiniscriptNodeCreationError
 from .key import MiniscriptKey
@@ -98,6 +99,16 @@ class Node:
     def __init__(self, *args, **kwargs):
         # Needs to be implemented by derived classes.
         raise NotImplementedError
+
+    def from_str(ms_str):
+        """Parse a Miniscript fragment from its string representation."""
+        assert isinstance(ms_str, str)
+        return parsing.miniscript_from_str(ms_str)
+
+    def from_script(script, pkh_preimages={}):
+        """Decode a Miniscript fragment from its Script representation."""
+        assert isinstance(script, CScript)
+        return parsing.miniscript_from_script(script, pkh_preimages)
 
     # TODO: have something like BuildScript from Core and get rid of the _script member.
     @property

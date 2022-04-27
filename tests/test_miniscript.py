@@ -21,7 +21,7 @@ from bitcointx.core.script import (
     SIGVERSION_WITNESS_V0,
 )
 from itertools import chain
-from miniscript import miniscript_from_str, miniscript_from_script, fragments
+from miniscript import fragments
 from miniscript.key import MiniscriptKey
 from miniscript.satisfaction import SatisfactionMaterial
 from miniscript.script import CScript
@@ -62,11 +62,11 @@ def roundtrip(ms_str):
     Note that the Script representation does not necessarily roundtrip. However
     it must be deterministic.
     """
-    node_a = miniscript_from_str(ms_str)
-    node_b = miniscript_from_script(node_a.script)
+    node_a = fragments.Node.from_str(ms_str)
+    node_b = fragments.Node.from_script(node_a.script)
 
-    assert node_b.script == miniscript_from_script(node_b.script).script
-    assert str(node_b) == str(miniscript_from_str(str(node_b)))
+    assert node_b.script == fragments.Node.from_script(node_b.script).script
+    assert str(node_b) == str(fragments.Node.from_str(str(node_b)))
 
     return node_b
 
@@ -74,10 +74,10 @@ def roundtrip(ms_str):
 def test_simple_sanity_checks():
     """Some quick and basic sanity checks of the implem. The place to add new findings."""
 
-    not_aliased = miniscript_from_str(
+    not_aliased = fragments.Node.from_str(
         "and_v(vc:pk_k(027a1b8c69c6a4e90ce85e0dd6fb99c51ef8af35b88f20f9f74f8f937f7acaec15),c:pk_k(023c110f0946ed6160ee95eee86efb79d13421d1b460f592b04dd21d74852d7631))"
     )
-    aliased = miniscript_from_str(
+    aliased = fragments.Node.from_str(
         "and_v(v:pk(027a1b8c69c6a4e90ce85e0dd6fb99c51ef8af35b88f20f9f74f8f937f7acaec15),pk(023c110f0946ed6160ee95eee86efb79d13421d1b460f592b04dd21d74852d7631))"
     )
     assert aliased.script == not_aliased.script
@@ -92,10 +92,10 @@ def test_simple_sanity_checks():
     assert roundtrip("after(1621038656)").value == 1621038656
     # CSV with a negative value
     with pytest.raises(Exception):
-        miniscript_from_script(b"\x86\x92\xB2")
+        fragments.Node.from_script(b"\x86\x92\xB2")
     # CLTV with a negative value
     with pytest.raises(Exception):
-        miniscript_from_script(b"\x86\x92\xB1")
+        fragments.Node.from_script(b"\x86\x92\xB1")
 
     roundtrip(f"pk({dummy_pk()})")
     roundtrip(f"pk_k({dummy_pk()})")
@@ -168,7 +168,7 @@ def test_compat_valid():
             if line.startswith("#"):
                 continue
             ms_str, hexscript = line.strip().split(" ")
-            ms = miniscript_from_str(ms_str)
+            ms = fragments.Node.from_str(ms_str)
             assert ms.script.hex() == hexscript
             ms.satisfaction(SatisfactionMaterial())
             ms.dissatisfaction()
@@ -181,189 +181,189 @@ def test_compat_invalid():
     with open(invalid_samples, "r") as f:
         for line in f:
             with pytest.raises(Exception):
-                miniscript_from_str(line.strip())
+                fragments.Node.from_str(line.strip())
 
 
 def test_timelock_conflicts():
     # Absolute timelock simple conflicts
-    assert miniscript_from_str("after(100)").no_timelock_mix
-    assert miniscript_from_str("after(1000000000)").no_timelock_mix
-    assert not miniscript_from_str(
+    assert fragments.Node.from_str("after(100)").no_timelock_mix
+    assert fragments.Node.from_str("after(1000000000)").no_timelock_mix
+    assert not fragments.Node.from_str(
         "and_b(after(100),a:after(1000000000))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "and_b(after(1000000000),a:after(100))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "and_v(v:after(100),after(1000000000))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "and_v(v:after(1000000000),after(100))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "and_n(ndv:after(100),after(1000000000))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "and_n(ndv:after(1000000000),after(100))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "andor(ndv:after(100),after(1000000000),after(1))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "andor(ndv:after(1000000000),after(100),after(1))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "andor(ndv:after(100),after(1),after(1000000000))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "andor(ndv:after(1000000000),after(1000000000),after(1))"
     ).no_timelock_mix
-    assert miniscript_from_str("or_b(dv:after(100),adv:after(1))").no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str("or_b(dv:after(100),adv:after(1))").no_timelock_mix
+    assert fragments.Node.from_str(
         "or_b(dv:after(100),adv:after(1000000000))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "or_b(dv:after(100),adv:after(1000000000))"
     ).no_timelock_mix
-    assert miniscript_from_str("or_c(ndv:after(100),v:after(1))").no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str("or_c(ndv:after(100),v:after(1))").no_timelock_mix
+    assert fragments.Node.from_str(
         "or_c(ndv:after(100),v:after(1000000000))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "or_c(ndv:after(1000000000),v:after(100))"
     ).no_timelock_mix
-    assert miniscript_from_str("or_d(ndv:after(100),after(1))").no_timelock_mix
-    assert miniscript_from_str("or_d(ndv:after(100),after(1000000000))").no_timelock_mix
-    assert miniscript_from_str("or_d(ndv:after(1000000000),after(100))").no_timelock_mix
-    assert miniscript_from_str("or_i(after(100),after(1))").no_timelock_mix
-    assert miniscript_from_str("or_i(after(100),after(1000000004))").no_timelock_mix
-    assert miniscript_from_str("or_i(after(1000000002),after(100))").no_timelock_mix
-    assert miniscript_from_str("thresh(1,ndv:after(100),andv:after(1))").no_timelock_mix
-    assert miniscript_from_str("thresh(2,ndv:after(100),andv:after(1))").no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str("or_d(ndv:after(100),after(1))").no_timelock_mix
+    assert fragments.Node.from_str("or_d(ndv:after(100),after(1000000000))").no_timelock_mix
+    assert fragments.Node.from_str("or_d(ndv:after(1000000000),after(100))").no_timelock_mix
+    assert fragments.Node.from_str("or_i(after(100),after(1))").no_timelock_mix
+    assert fragments.Node.from_str("or_i(after(100),after(1000000004))").no_timelock_mix
+    assert fragments.Node.from_str("or_i(after(1000000002),after(100))").no_timelock_mix
+    assert fragments.Node.from_str("thresh(1,ndv:after(100),andv:after(1))").no_timelock_mix
+    assert fragments.Node.from_str("thresh(2,ndv:after(100),andv:after(1))").no_timelock_mix
+    assert fragments.Node.from_str(
         "thresh(1,ndv:after(1000000007),andv:after(12))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "thresh(2,ndv:after(1000000007),andv:after(12))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "thresh(2,ndv:after(12),andv:after(1000000007))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "thresh(2,ndv:after(12),andv:after(1000000007),andv:after(3))"
     ).no_timelock_mix
 
     # Relative timelock simple conflicts
-    assert miniscript_from_str("older(100)").no_timelock_mix
-    assert miniscript_from_str("older(4194304)").no_timelock_mix
-    assert not miniscript_from_str("and_b(older(100),a:older(4194304))").no_timelock_mix
-    assert not miniscript_from_str("and_b(older(4194304),a:older(100))").no_timelock_mix
-    assert not miniscript_from_str("and_v(v:older(100),older(4194304))").no_timelock_mix
-    assert not miniscript_from_str("and_v(v:older(4194304),older(100))").no_timelock_mix
-    assert not miniscript_from_str(
+    assert fragments.Node.from_str("older(100)").no_timelock_mix
+    assert fragments.Node.from_str("older(4194304)").no_timelock_mix
+    assert not fragments.Node.from_str("and_b(older(100),a:older(4194304))").no_timelock_mix
+    assert not fragments.Node.from_str("and_b(older(4194304),a:older(100))").no_timelock_mix
+    assert not fragments.Node.from_str("and_v(v:older(100),older(4194304))").no_timelock_mix
+    assert not fragments.Node.from_str("and_v(v:older(4194304),older(100))").no_timelock_mix
+    assert not fragments.Node.from_str(
         "and_n(ndv:older(100),older(4194304))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "and_n(ndv:older(4194304),older(100))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "andor(ndv:older(100),older(4194304),older(1))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "andor(ndv:older(4194304),older(100),older(1))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "andor(ndv:older(100),older(1),older(4194304))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "andor(ndv:older(4194304),older(4194304),older(1))"
     ).no_timelock_mix
-    assert miniscript_from_str("or_b(dv:older(100),adv:older(1))").no_timelock_mix
-    assert miniscript_from_str("or_b(dv:older(100),adv:older(4194304))").no_timelock_mix
-    assert miniscript_from_str("or_b(dv:older(100),adv:older(4194304))").no_timelock_mix
-    assert miniscript_from_str("or_c(ndv:older(100),v:older(1))").no_timelock_mix
-    assert miniscript_from_str("or_c(ndv:older(100),v:older(4194304))").no_timelock_mix
-    assert miniscript_from_str("or_c(ndv:older(4194304),v:older(100))").no_timelock_mix
-    assert miniscript_from_str("or_d(ndv:older(100),older(1))").no_timelock_mix
-    assert miniscript_from_str("or_d(ndv:older(100),older(4194304))").no_timelock_mix
-    assert miniscript_from_str("or_d(ndv:older(4194304),older(100))").no_timelock_mix
-    assert miniscript_from_str("or_i(older(100),older(1))").no_timelock_mix
-    assert miniscript_from_str("or_i(older(100),older(4194304))").no_timelock_mix
-    assert miniscript_from_str("or_i(older(4194302),older(100))").no_timelock_mix
-    assert miniscript_from_str("thresh(1,ndv:older(100),andv:older(1))").no_timelock_mix
-    assert miniscript_from_str("thresh(2,ndv:older(100),andv:older(1))").no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str("or_b(dv:older(100),adv:older(1))").no_timelock_mix
+    assert fragments.Node.from_str("or_b(dv:older(100),adv:older(4194304))").no_timelock_mix
+    assert fragments.Node.from_str("or_b(dv:older(100),adv:older(4194304))").no_timelock_mix
+    assert fragments.Node.from_str("or_c(ndv:older(100),v:older(1))").no_timelock_mix
+    assert fragments.Node.from_str("or_c(ndv:older(100),v:older(4194304))").no_timelock_mix
+    assert fragments.Node.from_str("or_c(ndv:older(4194304),v:older(100))").no_timelock_mix
+    assert fragments.Node.from_str("or_d(ndv:older(100),older(1))").no_timelock_mix
+    assert fragments.Node.from_str("or_d(ndv:older(100),older(4194304))").no_timelock_mix
+    assert fragments.Node.from_str("or_d(ndv:older(4194304),older(100))").no_timelock_mix
+    assert fragments.Node.from_str("or_i(older(100),older(1))").no_timelock_mix
+    assert fragments.Node.from_str("or_i(older(100),older(4194304))").no_timelock_mix
+    assert fragments.Node.from_str("or_i(older(4194302),older(100))").no_timelock_mix
+    assert fragments.Node.from_str("thresh(1,ndv:older(100),andv:older(1))").no_timelock_mix
+    assert fragments.Node.from_str("thresh(2,ndv:older(100),andv:older(1))").no_timelock_mix
+    assert fragments.Node.from_str(
         "thresh(1,ndv:older(4194307),andv:older(12))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "thresh(2,ndv:older(4194307),andv:older(12))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "thresh(2,ndv:older(12),andv:older(4194307))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "thresh(2,ndv:older(12),andv:older(4194307),andv:older(3))"
     ).no_timelock_mix
 
     # There is no mix across relative and absolute timelocks
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "thresh(2,ndv:older(12),andv:after(1000000000),andv:older(3))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "thresh(2,ndv:after(12),andv:older(4194307),andv:after(3))"
     ).no_timelock_mix
-    assert miniscript_from_str("or_i(older(100),after(1000000000))").no_timelock_mix
-    assert miniscript_from_str("or_i(older(4194302),after(100))").no_timelock_mix
-    assert miniscript_from_str("or_d(ndv:older(100),after(1000000000))").no_timelock_mix
-    assert miniscript_from_str("or_d(ndv:older(4194304),after(100))").no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str("or_i(older(100),after(1000000000))").no_timelock_mix
+    assert fragments.Node.from_str("or_i(older(4194302),after(100))").no_timelock_mix
+    assert fragments.Node.from_str("or_d(ndv:older(100),after(1000000000))").no_timelock_mix
+    assert fragments.Node.from_str("or_d(ndv:older(4194304),after(100))").no_timelock_mix
+    assert fragments.Node.from_str(
         "or_c(ndv:older(100),v:after(1000000000))"
     ).no_timelock_mix
-    assert miniscript_from_str("or_c(ndv:older(4194304),v:after(100))").no_timelock_mix
-    assert miniscript_from_str("and_b(older(100),a:after(1000000000))").no_timelock_mix
-    assert miniscript_from_str("and_b(older(4194304),a:after(100))").no_timelock_mix
-    assert miniscript_from_str("and_v(v:after(100),older(4194304))").no_timelock_mix
-    assert miniscript_from_str("and_v(v:older(4194304),after(100))").no_timelock_mix
-    assert miniscript_from_str("and_n(ndv:after(100),older(4194304))").no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str("or_c(ndv:older(4194304),v:after(100))").no_timelock_mix
+    assert fragments.Node.from_str("and_b(older(100),a:after(1000000000))").no_timelock_mix
+    assert fragments.Node.from_str("and_b(older(4194304),a:after(100))").no_timelock_mix
+    assert fragments.Node.from_str("and_v(v:after(100),older(4194304))").no_timelock_mix
+    assert fragments.Node.from_str("and_v(v:older(4194304),after(100))").no_timelock_mix
+    assert fragments.Node.from_str("and_n(ndv:after(100),older(4194304))").no_timelock_mix
+    assert fragments.Node.from_str(
         "and_n(ndv:older(4194304),after(1000000000))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "andor(ndv:older(100),after(1000000000),older(1))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "andor(ndv:older(100),older(1),after(1000000000))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "andor(ndv:older(4194304),after(4194304),older(1))"
     ).no_timelock_mix
-    assert miniscript_from_str("or_b(dv:after(100),adv:older(4194304))").no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str("or_b(dv:after(100),adv:older(4194304))").no_timelock_mix
+    assert fragments.Node.from_str(
         "or_b(dv:older(100),adv:after(1000000000))"
     ).no_timelock_mix
 
     # Some more complicated scenarii
     # These can be satisfied, but the first branch can never be part of the satisfaction
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         f"thresh(2,and_b(pk({dummy_pk()}),sdv:older(4)),a:and_b(pk({dummy_pk()}),sdv:older(4194304)),a:and_b(pk({dummy_pk()}),sdv:older(4194304)))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         f"thresh(2,and_b(pk({dummy_pk()}),sdv:after(4)),a:and_b(pk({dummy_pk()}),sdv:after(1000000000)),a:and_b(pk({dummy_pk()}),sdv:after(1000000000)))"
     ).no_timelock_mix
     # These can be satisfied, but the second branch needs to always be part of the
     # satisfaction. They don't have the 'k' property as they certainly don't "match
     # the user expectation of the corresponding spending policy".
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         f"thresh(2,and_b(pk({dummy_pk()}),sdv:older(4)),a:and_b(pk({dummy_pk()}),sdv:older(4194304)),a:and_b(pk({dummy_pk()}),sdv:older(15)))"
     ).no_timelock_mix
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         f"thresh(2,and_b(pk({dummy_pk()}),sdv:after(4)),a:and_b(pk({dummy_pk()}),sdv:after(1000000000)),a:and_b(pk({dummy_pk()}),sdv:after(15)))"
     ).no_timelock_mix
     # Two cases from the C++ unit tests
-    assert not miniscript_from_str(
+    assert not fragments.Node.from_str(
         "thresh(2,ltv:after(1000000000),altv:after(100),a:pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65))"
     ).no_timelock_mix
-    assert miniscript_from_str(
+    assert fragments.Node.from_str(
         "thresh(1,c:pk_k(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),altv:after(1000000000),altv:after(100))"
     ).no_timelock_mix
 
@@ -523,7 +523,7 @@ def test_satisfaction_cost():
     ]
 
     for ms_str, op_cost, sat_cost in vectors:
-        ms = miniscript_from_str(ms_str)
+        ms = fragments.Node.from_str(ms_str)
         assert ms.exec_info.ops_count == op_cost
         assert ms.exec_info.sat_elems == sat_cost
 

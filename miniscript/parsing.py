@@ -2,39 +2,8 @@
 Utilities to parse Miniscript from string and Script representations.
 """
 
-from .fragments import (
-    Just0,
-    Just1,
-    Pk,
-    Pkh,
-    Older,
-    After,
-    Sha256,
-    Ripemd160,
-    Hash256,
-    Hash160,
-    Multi,
-    AndV,
-    AndB,
-    AndN,
-    OrB,
-    OrC,
-    OrD,
-    OrI,
-    AndOr,
-    Thresh,
-    WrapA,
-    WrapC,
-    WrapD,
-    WrapJ,
-    WrapL,
-    WrapN,
-    WrapS,
-    WrapT,
-    WrapU,
-    WrapV,
-    Node,
-)
+import miniscript.fragments as fragments
+
 from .key import MiniscriptKey
 from .script import (
     CScriptOp,
@@ -79,10 +48,10 @@ def stack_item_to_int(item):
     if isinstance(item, bytes):
         return read_script_number(item)
 
-    if isinstance(item, Node):
-        if isinstance(item, Just1):
+    if isinstance(item, fragments.Node):
+        if isinstance(item, fragments.Just1):
             return 1
-        if isinstance(item, Just0):
+        if isinstance(item, fragments.Just0):
             return 0
 
     if isinstance(item, int):
@@ -118,13 +87,13 @@ def parse_term_single_elem(expr_list, idx):
         and len(expr_list[idx]) == 33
         and expr_list[idx][0] in [2, 3]
     ):
-        expr_list[idx] = Pk(expr_list[idx])
+        expr_list[idx] = fragments.Pk(expr_list[idx])
 
     # Match against JUST_1 and JUST_0.
     if expr_list[idx] == 1:
-        expr_list[idx] = Just1()
+        expr_list[idx] = fragments.Just1()
     if expr_list[idx] == b"":
-        expr_list[idx] = Just0()
+        expr_list[idx] = fragments.Just0()
 
 
 def parse_term_2_elems(expr_list, idx):
@@ -150,12 +119,12 @@ def parse_term_2_elems(expr_list, idx):
         return
 
     if elem_b == OP_CHECKSEQUENCEVERIFY:
-        node = Older(n)
+        node = fragments.Older(n)
         expr_list[idx : idx + 2] = [node]
         return expr_list
 
     if elem_b == OP_CHECKLOCKTIMEVERIFY:
-        node = After(n)
+        node = fragments.After(n)
         expr_list[idx : idx + 2] = [node]
         return expr_list
 
@@ -179,7 +148,7 @@ def parse_term_5_elems(expr_list, idx, pkh_preimages={}):
     key_hash = expr_list[idx + 2]
     key = pkh_preimages.get(key_hash)
     assert key is not None  # TODO: have a real error here
-    node = Pkh(key)
+    node = fragments.Pkh(key)
     expr_list[idx : idx + 5] = [node]
     return expr_list
 
@@ -198,7 +167,7 @@ def parse_term_7_elems(expr_list, idx):
         and len(expr_list[idx + 5]) == 32
         and expr_list[idx + 6] == OP_EQUAL
     ):
-        node = Sha256(expr_list[idx + 5])
+        node = fragments.Sha256(expr_list[idx + 5])
         expr_list[idx : idx + 7] = [node]
         return expr_list
 
@@ -209,7 +178,7 @@ def parse_term_7_elems(expr_list, idx):
         and len(expr_list[idx + 5]) == 32
         and expr_list[idx + 6] == OP_EQUAL
     ):
-        node = Hash256(expr_list[idx + 5])
+        node = fragments.Hash256(expr_list[idx + 5])
         expr_list[idx : idx + 7] = [node]
         return expr_list
 
@@ -221,7 +190,7 @@ def parse_term_7_elems(expr_list, idx):
         and len(expr_list[idx + 5]) == 20
         and expr_list[idx + 6] == OP_EQUAL
     ):
-        node = Ripemd160(expr_list[idx + 5])
+        node = fragments.Ripemd160(expr_list[idx + 5])
         expr_list[idx : idx + 7] = [node]
         return expr_list
 
@@ -232,7 +201,7 @@ def parse_term_7_elems(expr_list, idx):
         and len(expr_list[idx + 5]) == 20
         and expr_list[idx + 6] == OP_EQUAL
     ):
-        node = Hash160(expr_list[idx + 5])
+        node = fragments.Hash160(expr_list[idx + 5])
         expr_list[idx : idx + 7] = [node]
         return expr_list
 
@@ -246,38 +215,38 @@ def parse_nonterm_2_elems(expr_list, idx):
     elem_a = expr_list[idx]
     elem_b = expr_list[idx + 1]
 
-    if isinstance(elem_a, Node):
+    if isinstance(elem_a, fragments.Node):
         # Match against and_v.
-        if isinstance(elem_b, Node) and elem_a.p.V and elem_b.p.has_any("BKV"):
+        if isinstance(elem_b, fragments.Node) and elem_a.p.V and elem_b.p.has_any("BKV"):
             # Is it a special case of t: wrapper?
-            if isinstance(elem_b, Just1):
-                node = WrapT(elem_a)
+            if isinstance(elem_b, fragments.Just1):
+                node = fragments.WrapT(elem_a)
             else:
-                node = AndV(elem_a, elem_b)
+                node = fragments.AndV(elem_a, elem_b)
             expr_list[idx : idx + 2] = [node]
             return expr_list
 
         # Match against c wrapper.
         if elem_b == OP_CHECKSIG and elem_a.p.K:
-            node = WrapC(elem_a)
+            node = fragments.WrapC(elem_a)
             expr_list[idx : idx + 2] = [node]
             return expr_list
 
         # Match against v wrapper.
         if elem_b == OP_VERIFY and elem_a.p.B:
-            node = WrapV(elem_a)
+            node = fragments.WrapV(elem_a)
             expr_list[idx : idx + 2] = [node]
             return expr_list
 
         # Match against n wrapper.
         if elem_b == OP_0NOTEQUAL and elem_a.p.B:
-            node = WrapN(elem_a)
+            node = fragments.WrapN(elem_a)
             expr_list[idx : idx + 2] = [node]
             return expr_list
 
     # Match against s wrapper.
-    if isinstance(elem_b, Node) and elem_a == OP_SWAP and elem_b.p.has_all("Bo"):
-        node = WrapS(elem_b)
+    if isinstance(elem_b, fragments.Node) and elem_a == OP_SWAP and elem_b.p.has_all("Bo"):
+        node = fragments.WrapS(elem_b)
         expr_list[idx : idx + 2] = [node]
         return expr_list
 
@@ -292,27 +261,27 @@ def parse_nonterm_3_elems(expr_list, idx):
     elem_b = expr_list[idx + 1]
     elem_c = expr_list[idx + 2]
 
-    if isinstance(elem_a, Node) and isinstance(elem_b, Node):
+    if isinstance(elem_a, fragments.Node) and isinstance(elem_b, fragments.Node):
         # Match against and_b.
         if elem_c == OP_BOOLAND and elem_a.p.B and elem_b.p.W:
-            node = AndB(elem_a, elem_b)
+            node = fragments.AndB(elem_a, elem_b)
             expr_list[idx : idx + 3] = [node]
             return expr_list
 
         # Match against or_b.
         if elem_c == OP_BOOLOR and elem_a.p.has_all("Bd") and elem_b.p.has_all("Wd"):
-            node = OrB(elem_a, elem_b)
+            node = fragments.OrB(elem_a, elem_b)
             expr_list[idx : idx + 3] = [node]
             return expr_list
 
     # Match against a wrapper.
     if (
         elem_a == OP_TOALTSTACK
-        and isinstance(elem_b, Node)
+        and isinstance(elem_b, fragments.Node)
         and elem_b.p.B
         and elem_c == OP_FROMALTSTACK
     ):
-        node = WrapA(elem_b)
+        node = fragments.WrapA(elem_b)
         expr_list[idx : idx + 3] = [node]
         return expr_list
 
@@ -331,7 +300,7 @@ def parse_nonterm_3_elems(expr_list, idx):
     keys = []
     i = idx + 1
     while idx < len(expr_list) - 2:
-        if not isinstance(expr_list[i], Pk):
+        if not isinstance(expr_list[i], fragments.Pk):
             break
         keys.append(expr_list[i].pubkey)
         i += 1
@@ -344,7 +313,7 @@ def parse_nonterm_3_elems(expr_list, idx):
             return
         if m is None or m != len(keys):
             return
-        node = Multi(k, keys)
+        node = fragments.Multi(k, keys)
         expr_list[idx : i + 2] = [node]
         return expr_list
 
@@ -358,13 +327,13 @@ def parse_nonterm_4_elems(expr_list, idx):
     (it_a, it_b, it_c, it_d) = expr_list[idx : idx + 4]
 
     # Match against thresh. It's of the form [X] ([X] ADD)* k EQUAL
-    if isinstance(it_a, Node) and it_a.p.has_all("Bdu"):
+    if isinstance(it_a, fragments.Node) and it_a.p.has_all("Bdu"):
         subs = [it_a]
         # The first matches, now do all the ([X] ADD)s and return
         # if a pair is of the form (k, EQUAL).
         for i in range(idx + 1, len(expr_list) - 1, 2):
             if (
-                isinstance(expr_list[i], Node)
+                isinstance(expr_list[i], fragments.Node)
                 and expr_list[i].p.has_all("Wdu")
                 and expr_list[i + 1] == OP_ADD
             ):
@@ -374,7 +343,7 @@ def parse_nonterm_4_elems(expr_list, idx):
                 try:
                     k = stack_item_to_int(expr_list[i])
                     if len(subs) >= k >= 1:
-                        node = Thresh(k, subs)
+                        node = fragments.Thresh(k, subs)
                         expr_list[idx : i + 1 + 1] = [node]
                         return expr_list
                 except ScriptNumError:
@@ -384,25 +353,25 @@ def parse_nonterm_4_elems(expr_list, idx):
 
     # Match against or_c.
     if (
-        isinstance(it_a, Node)
+        isinstance(it_a, fragments.Node)
         and it_a.p.has_all("Bdu")
         and it_b == OP_NOTIF
-        and isinstance(it_c, Node)
+        and isinstance(it_c, fragments.Node)
         and it_c.p.V
         and it_d == OP_ENDIF
     ):
-        node = OrC(it_a, it_c)
+        node = fragments.OrC(it_a, it_c)
         expr_list[idx : idx + 4] = [node]
         return expr_list
 
     # Match against d wrapper.
     if (
         [it_a, it_b] == [OP_DUP, OP_IF]
-        and isinstance(it_c, Node)
+        and isinstance(it_c, fragments.Node)
         and it_c.p.has_all("Vz")
         and it_d == OP_ENDIF
     ):
-        node = WrapD(it_c)
+        node = fragments.WrapD(it_c)
         expr_list[idx : idx + 4] = [node]
         return expr_list
 
@@ -417,43 +386,43 @@ def parse_nonterm_5_elems(expr_list, idx):
 
     # Match against or_d.
     if (
-        isinstance(it_a, Node)
+        isinstance(it_a, fragments.Node)
         and it_a.p.has_all("Bdu")
         and [it_b, it_c] == [OP_IFDUP, OP_NOTIF]
-        and isinstance(it_d, Node)
+        and isinstance(it_d, fragments.Node)
         and it_d.p.B
         and it_e == OP_ENDIF
     ):
-        node = OrD(it_a, it_d)
+        node = fragments.OrD(it_a, it_d)
         expr_list[idx : idx + 5] = [node]
         return expr_list
 
     # Match against or_i.
     if (
         it_a == OP_IF
-        and isinstance(it_b, Node)
+        and isinstance(it_b, fragments.Node)
         and it_b.p.has_any("BKV")
         and it_c == OP_ELSE
-        and isinstance(it_d, Node)
+        and isinstance(it_d, fragments.Node)
         and it_d.p.has_any("BKV")
         and it_e == OP_ENDIF
     ):
-        if isinstance(it_b, Just0):
-            node = WrapL(it_d)
-        elif isinstance(it_d, Just0):
-            node = WrapU(it_b)
+        if isinstance(it_b, fragments.Just0):
+            node = fragments.WrapL(it_d)
+        elif isinstance(it_d, fragments.Just0):
+            node = fragments.WrapU(it_b)
         else:
-            node = OrI(it_b, it_d)
+            node = fragments.OrI(it_b, it_d)
         expr_list[idx : idx + 5] = [node]
         return expr_list
 
     # Match against j wrapper.
     if (
         [it_a, it_b, it_c] == [OP_SIZE, OP_0NOTEQUAL, OP_IF]
-        and isinstance(it_d, Node)
+        and isinstance(it_d, fragments.Node)
         and it_e == OP_ENDIF
     ):
-        node = WrapJ(expr_list[idx + 3])
+        node = fragments.WrapJ(expr_list[idx + 3])
         expr_list[idx : idx + 5] = [node]
         return expr_list
 
@@ -468,20 +437,20 @@ def parse_nonterm_6_elems(expr_list, idx):
 
     # Match against andor.
     if (
-        isinstance(it_a, Node)
+        isinstance(it_a, fragments.Node)
         and it_a.p.has_all("Bdu")
         and it_b == OP_NOTIF
-        and isinstance(it_c, Node)
+        and isinstance(it_c, fragments.Node)
         and it_c.p.has_any("BKV")
         and it_d == OP_ELSE
-        and isinstance(it_e, Node)
+        and isinstance(it_e, fragments.Node)
         and it_e.p.has_any("BKV")
         and it_f == OP_ENDIF
     ):
-        if isinstance(it_c, Just0):
-            node = AndN(it_a, it_e)
+        if isinstance(it_c, fragments.Just0):
+            node = fragments.AndN(it_a, it_e)
         else:
-            node = AndOr(it_a, it_e, it_c)
+            node = fragments.AndOr(it_a, it_e, it_c)
         expr_list[idx : idx + 6] = [node]
         return expr_list
 
@@ -493,7 +462,7 @@ def parse_expr_list(expr_list):
     expr_list_len = len(expr_list)
 
     # Root node reached.
-    if expr_list_len == 1 and isinstance(expr_list[0], Node):
+    if expr_list_len == 1 and isinstance(expr_list[0], fragments.Node):
         return expr_list[0]
 
     # Step through each list index and match against templates.
@@ -566,7 +535,7 @@ def miniscript_from_script(script, pkh_preimages={}):
 
         idx += 1
 
-    # And then recursively parse non-terminal ones.
+    # fragments.And then recursively parse non-terminal ones.
     return parse_expr_list(expr_list)
 
 
@@ -608,12 +577,12 @@ def parse_one(string):
     Returns the node and the part of the string not consumed.
     """
 
-    # We special case Just1 and Just0 since they are the only one which don't
+    # We special case fragments.Just1 and fragments.Just0 since they are the only one which don't
     # have a function syntax.
     if string[0] == "0":
-        return Just0(), string[1:]
+        return fragments.Just0(), string[1:]
     if string[0] == "1":
-        return Just1(), string[1:]
+        return fragments.Just1(), string[1:]
 
     # Now, find the separator for all functions.
     for i, char in enumerate(string):
@@ -625,38 +594,38 @@ def parse_one(string):
     else:
         tag, remaining = string[:i], string[i + 1 :]
 
-    # Wrappers
+    # fragments.Wrappers
     if char == ":":
         sub, remaining = parse_one(remaining)
         if tag == "a":
-            return WrapA(sub), remaining
+            return fragments.WrapA(sub), remaining
 
         if tag == "s":
-            return WrapS(sub), remaining
+            return fragments.WrapS(sub), remaining
 
         if tag == "c":
-            return WrapC(sub), remaining
+            return fragments.WrapC(sub), remaining
 
         if tag == "t":
-            return WrapT(sub), remaining
+            return fragments.WrapT(sub), remaining
 
         if tag == "d":
-            return WrapD(sub), remaining
+            return fragments.WrapD(sub), remaining
 
         if tag == "v":
-            return WrapV(sub), remaining
+            return fragments.WrapV(sub), remaining
 
         if tag == "j":
-            return WrapJ(sub), remaining
+            return fragments.WrapJ(sub), remaining
 
         if tag == "n":
-            return WrapN(sub), remaining
+            return fragments.WrapN(sub), remaining
 
         if tag == "l":
-            return WrapL(sub), remaining
+            return fragments.WrapL(sub), remaining
 
         if tag == "u":
-            return WrapU(sub), remaining
+            return fragments.WrapU(sub), remaining
 
         assert False, (tag, sub, remaining)  # TODO: real errors
 
@@ -677,42 +646,42 @@ def parse_one(string):
         params, remaining = split_params(remaining)
 
         if tag == "0":
-            return Just0(), remaining
+            return fragments.Just0(), remaining
 
         if tag == "1":
-            return Just1(), remaining
+            return fragments.Just1(), remaining
 
         if tag == "pk":
-            return WrapC(Pk(params[0])), remaining
+            return fragments.WrapC(fragments.Pk(params[0])), remaining
 
         if tag == "pk_k":
-            return Pk(params[0]), remaining
+            return fragments.Pk(params[0]), remaining
 
         if tag == "pkh":
             keyhash = bytes.fromhex(params[0])
-            return WrapC(Pkh(keyhash)), remaining
+            return fragments.WrapC(fragments.Pkh(keyhash)), remaining
 
         if tag == "pk_h":
             keyhash_b = bytes.fromhex(params[0])
-            return Pkh(keyhash_b), remaining
+            return fragments.Pkh(keyhash_b), remaining
 
         if tag == "older":
             value = int(params[0])
-            return Older(value), remaining
+            return fragments.Older(value), remaining
 
         if tag == "after":
             value = int(params[0])
-            return After(value), remaining
+            return fragments.After(value), remaining
 
         if tag in ["sha256", "hash256", "ripemd160", "hash160"]:
             digest = bytes.fromhex(params[0])
             if tag == "sha256":
-                return Sha256(digest), remaining
+                return fragments.Sha256(digest), remaining
             if tag == "hash256":
-                return Hash256(digest), remaining
+                return fragments.Hash256(digest), remaining
             if tag == "ripemd160":
-                return Ripemd160(digest), remaining
-            return Hash160(digest), remaining
+                return fragments.Ripemd160(digest), remaining
+            return fragments.Hash160(digest), remaining
 
         if tag == "multi":
             k = int(params.pop(0))
@@ -720,43 +689,43 @@ def parse_one(string):
             for param in params:
                 key_obj = MiniscriptKey(param)
                 key_n.append(key_obj)
-            return Multi(k, key_n), remaining
+            return fragments.Multi(k, key_n), remaining
 
         assert False, (tag, params, remaining)
 
     # Non-terminal elements (connectives)
-    # We special case Thresh, as its first sub is an integer.
+    # We special case fragments.Thresh, as its first sub is an integer.
     if tag == "thresh":
         k, remaining = parse_one_num(remaining)
     # TODO: real errors in place of unpacking
     subs, remaining = parse_many(remaining)
 
     if tag == "and_v":
-        return AndV(*subs), remaining
+        return fragments.AndV(*subs), remaining
 
     if tag == "and_b":
-        return AndB(*subs), remaining
+        return fragments.AndB(*subs), remaining
 
     if tag == "and_n":
-        return AndN(*subs), remaining
+        return fragments.AndN(*subs), remaining
 
     if tag == "or_b":
-        return OrB(*subs), remaining
+        return fragments.OrB(*subs), remaining
 
     if tag == "or_c":
-        return OrC(*subs), remaining
+        return fragments.OrC(*subs), remaining
 
     if tag == "or_d":
-        return OrD(*subs), remaining
+        return fragments.OrD(*subs), remaining
 
     if tag == "or_i":
-        return OrI(*subs), remaining
+        return fragments.OrI(*subs), remaining
 
     if tag == "andor":
-        return AndOr(*subs), remaining
+        return fragments.AndOr(*subs), remaining
 
     if tag == "thresh":
-        return Thresh(k, subs), remaining
+        return fragments.Thresh(k, subs), remaining
 
     assert False, (tag, subs, remaining)  # TODO
 
