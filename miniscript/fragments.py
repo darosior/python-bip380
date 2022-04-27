@@ -65,36 +65,39 @@ def hash160(data):
 class Node:
     """A Miniscript fragment."""
 
-    def __init__(self):
-        # The fragment's type and properties
-        self.p = None
-        # List of all sub fragments
-        self.subs = []
-        # A list of Script elements, a CScript is created all at once in the script() method.
-        self._script = []
-        # Whether any satisfaction for this fragment require a signature
-        self.needs_sig = None
-        # Whether any dissatisfaction for this fragment requires a signature
-        self.is_forced = None
-        # Whether this fragment has a unique unconditional satisfaction, and all conditional
-        # ones require a signature.
-        self.is_expressive = None
-        # Whether for any possible way to satisfy this fragment (may be none), a
-        # non-malleable satisfaction exists.
-        self.is_nonmalleable = None
-        # Whether this node or any of its subs contains an absolute heightlock
-        self.abs_heightlocks = None
-        # Whether this node or any of its subs contains a relative heightlock
-        self.rel_heightlocks = None
-        # Whether this node or any of its subs contains an absolute timelock
-        self.abs_timelocks = None
-        # Whether this node or any of its subs contains a relative timelock
-        self.rel_timelocks = None
-        # Whether this node does not contain a mix of timelock or heightlock of different types.
-        # That is, not (abs_heightlocks and rel_heightlocks or abs_timelocks and abs_timelocks)
-        self.no_timelock_mix = None
-        # Information about this Miniscript execution (satisfaction cost, etc..)
-        self.exec_info = None
+    # The fragment's type and properties
+    p = None
+    # List of all sub fragments
+    subs = []
+    # A list of Script elements, a CScript is created all at once in the script() method.
+    _script = []
+    # Whether any satisfaction for this fragment require a signature
+    needs_sig = None
+    # Whether any dissatisfaction for this fragment requires a signature
+    is_forced = None
+    # Whether this fragment has a unique unconditional satisfaction, and all conditional
+    # ones require a signature.
+    is_expressive = None
+    # Whether for any possible way to satisfy this fragment (may be none), a
+    # non-malleable satisfaction exists.
+    is_nonmalleable = None
+    # Whether this node or any of its subs contains an absolute heightlock
+    abs_heightlocks = None
+    # Whether this node or any of its subs contains a relative heightlock
+    rel_heightlocks = None
+    # Whether this node or any of its subs contains an absolute timelock
+    abs_timelocks = None
+    # Whether this node or any of its subs contains a relative timelock
+    rel_timelocks = None
+    # Whether this node does not contain a mix of timelock or heightlock of different types.
+    # That is, not (abs_heightlocks and rel_heightlocks or abs_timelocks and abs_timelocks)
+    no_timelock_mix = None
+    # Information about this Miniscript execution (satisfaction cost, etc..)
+    exec_info = None
+
+    def __init__(self, *args, **kwargs):
+        # Needs to be implemented by derived classes.
+        raise NotImplementedError
 
     # TODO: have something like BuildScript from Core and get rid of the _script member.
     @property
@@ -118,7 +121,6 @@ class Node:
 
 class Just0(Node):
     def __init__(self):
-        Node.__init__(self)
 
         self._script = [OP_0]
 
@@ -146,7 +148,6 @@ class Just0(Node):
 
 class Just1(Node):
     def __init__(self):
-        Node.__init__(self)
 
         self._script = [OP_1]
 
@@ -179,7 +180,6 @@ class PkNode(Node):
     """
 
     def __init__(self, pubkey):
-        Node.__init__(self)
 
         if isinstance(pubkey, bytes) or isinstance(pubkey, str):
             self.pubkey = MiniscriptKey(pubkey)
@@ -252,7 +252,6 @@ class Pkh(Node):
 class Older(Node):
     def __init__(self, value):
         assert value > 0 and value < 2 ** 31
-        Node.__init__(self)
 
         self.value = value
         self._script = [self.value, OP_CHECKSEQUENCEVERIFY]
@@ -284,7 +283,6 @@ class Older(Node):
 class After(Node):
     def __init__(self, value):
         assert value > 0 and value < 2 ** 31
-        Node.__init__(self)
 
         self.value = value
         self._script = [self.value, OP_CHECKLOCKTIMEVERIFY]
@@ -321,7 +319,6 @@ class HashNode(Node):
 
     def __init__(self, digest, hash_op):
         assert isinstance(digest, bytes)  # TODO: real errors
-        Node.__init__(self)
 
         self.digest = digest
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, hash_op, digest, OP_EQUAL]
@@ -389,7 +386,6 @@ class Multi(Node):
     def __init__(self, k, keys):
         assert 1 <= k <= len(keys)
         assert all(isinstance(k, MiniscriptKey) for k in keys)
-        Node.__init__(self)
 
         self.k = k
         self.keys = keys
@@ -433,7 +429,6 @@ class AndV(Node):
     def __init__(self, sub_x, sub_y):
         assert sub_x.p.V
         assert sub_y.p.has_any("BKV")
-        Node.__init__(self)
 
         self.subs = [sub_x, sub_y]
         self._script = sub_x._script + sub_y._script
@@ -475,7 +470,6 @@ class AndV(Node):
 class AndB(Node):
     def __init__(self, sub_x, sub_y):
         assert sub_x.p.B and sub_y.p.W
-        Node.__init__(self)
 
         self.subs = [sub_x, sub_y]
         self._script = [*sub_x._script, *sub_y._script, OP_BOOLAND]
@@ -531,7 +525,6 @@ class OrB(Node):
     def __init__(self, sub_x, sub_z):
         assert sub_x.p.has_all("Bd")
         assert sub_z.p.has_all("Wd")
-        Node.__init__(self)
 
         self.subs = [sub_x, sub_z]
         self._script = [*sub_x._script, *sub_z._script, OP_BOOLOR]
@@ -571,7 +564,6 @@ class OrB(Node):
 class OrC(Node):
     def __init__(self, sub_x, sub_z):
         assert sub_x.p.has_all("Bdu") and sub_z.p.V
-        Node.__init__(self)
 
         self.subs = [sub_x, sub_z]
         self._script = [*sub_x._script, OP_NOTIF, *sub_z._script, OP_ENDIF]
@@ -613,7 +605,6 @@ class OrD(Node):
     def __init__(self, sub_x, sub_z):
         assert sub_x.p.has_all("Bdu")
         assert sub_z.p.has_all("B")
-        Node.__init__(self)
 
         self.subs = [sub_x, sub_z]
         self._script = [*sub_x._script, OP_IFDUP, OP_NOTIF, *sub_z._script, OP_ENDIF]
@@ -655,7 +646,6 @@ class OrD(Node):
 class OrI(Node):
     def __init__(self, sub_x, sub_z):
         assert sub_x.p.type() == sub_z.p.type() and sub_x.p.has_any("BKV")
-        Node.__init__(self)
 
         self.subs = [sub_x, sub_z]
         self._script = [OP_IF, *sub_x._script, OP_ELSE, *sub_z._script, OP_ENDIF]
@@ -704,7 +694,6 @@ class AndOr(Node):
     def __init__(self, sub_x, sub_y, sub_z):
         assert sub_x.p.has_all("Bdu")
         assert sub_y.p.type() == sub_z.p.type() and sub_y.p.has_any("BKV")
-        Node.__init__(self)
 
         self.subs = [sub_x, sub_y, sub_z]
         self._script = [
@@ -786,7 +775,6 @@ class Thresh(Node):
     def __init__(self, k, subs):
         n = len(subs)
         assert 1 <= k <= n
-        Node.__init__(self)
 
         self.k = k
         self.subs = subs
@@ -867,7 +855,6 @@ class WrapperNode(Node):
     """
 
     def __init__(self, sub):
-        Node.__init__(self)
         self.subs = [sub]
 
         # Properties for most wrappers are directly inherited. When it's not, they
