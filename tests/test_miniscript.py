@@ -21,8 +21,8 @@ from bitcointx.core.script import (
     SIGVERSION_WITNESS_V0,
 )
 from itertools import chain
+from miniscript.key import DescriptorKey
 from miniscript.miniscript import fragments
-from miniscript.miniscript.key import MiniscriptKey
 from miniscript.miniscript.satisfaction import SatisfactionMaterial
 from miniscript.miniscript.script import CScript
 
@@ -537,7 +537,7 @@ def test_satisfy_simple_combs():
 
     timelock = 11
     preimage = bytes(32)
-    keys = [MiniscriptKey(k) for k in keypairs.values()]
+    keys = [DescriptorKey(k) for k in keypairs.values()]
     dummy_sigs = []
     for privkey, pubkey in keypairs.items():
         dummy_sigs.append(
@@ -835,14 +835,14 @@ def test_satisfaction_validity():
 
     sat_test(fragments.Just1(), malleable=True)
 
-    pk_frag = fragments.WrapC(fragments.Pk(MiniscriptKey(pubkeys[0])))
+    pk_frag = fragments.WrapC(fragments.Pk(DescriptorKey(pubkeys[0])))
     pk_keypairs = {pubkeys[0]: keypairs[pubkeys[0]]}
     sat_test(
         pk_frag,
         keypairs=pk_keypairs,
     )
 
-    pkh_frag = fragments.WrapC(fragments.Pkh(MiniscriptKey(pubkeys[1])))
+    pkh_frag = fragments.WrapC(fragments.Pkh(DescriptorKey(pubkeys[1])))
     pkh_keypairs = {pubkeys[1]: keypairs[pubkeys[1]]}
     sat_test(
         pkh_frag,
@@ -857,7 +857,7 @@ def test_satisfaction_validity():
 
     multi_keys, multi_keypairs = [], {}
     for n in range(1, 21):
-        multi_keys.append(MiniscriptKey(pubkeys[n - 1]))
+        multi_keys.append(DescriptorKey(pubkeys[n - 1]))
         multi_keypairs[pubkeys[n - 1]] = keypairs[pubkeys[n - 1]]
         for m in range(1, n):
             sat_test(
@@ -871,7 +871,7 @@ def test_satisfaction_validity():
     )
     sat_test(andv_frag, keypairs=andv_keypairs)
 
-    multi_keys = [MiniscriptKey(key) for key in pubkeys[1:3]]
+    multi_keys = [DescriptorKey(key) for key in pubkeys[1:3]]
     and_b_keypairs = {pub: keypairs[pub] for pub in pubkeys[:2]}
     and_b_frag = fragments.AndB(
         pk_frag,
@@ -926,7 +926,7 @@ def test_satisfaction_validity():
         keypairs=or_d_keypairs,
     )
 
-    multi_keys = [MiniscriptKey(key) for key in pubkeys[2:5]]
+    multi_keys = [DescriptorKey(key) for key in pubkeys[2:5]]
     multi_frag = fragments.Multi(2, multi_keys)
     or_i_frag = fragments.OrI(multi_frag, pkh_frag)
     or_i_keypairs = {pub: keypairs[pub] for pub in pubkeys[1:2]}

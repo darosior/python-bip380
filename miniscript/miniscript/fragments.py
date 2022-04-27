@@ -9,8 +9,9 @@ import copy
 import hashlib
 import miniscript.miniscript.parsing as parsing
 
+from miniscript.key import DescriptorKey
+
 from .errors import MiniscriptNodeCreationError
-from .key import MiniscriptKey
 from .property import Property
 from .satisfaction import ExecutionInfo, Satisfaction
 from .script import (
@@ -205,8 +206,8 @@ class PkNode(Node):
     def __init__(self, pubkey):
 
         if isinstance(pubkey, bytes) or isinstance(pubkey, str):
-            self.pubkey = MiniscriptKey(pubkey)
-        elif isinstance(pubkey, MiniscriptKey):
+            self.pubkey = DescriptorKey(pubkey)
+        elif isinstance(pubkey, DescriptorKey):
             self.pubkey = pubkey
         else:
             raise MiniscriptNodeCreationError("Invalid public key")
@@ -268,7 +269,7 @@ class Pkh(Node):
         return f"pk_h({self.pubkey.bytes().hex()})"
 
     def pk_hash(self):
-        assert isinstance(self.pubkey, MiniscriptKey)
+        assert isinstance(self.pubkey, DescriptorKey)
         return hash160(self.pubkey.bytes())
 
 
@@ -408,7 +409,7 @@ class Hash160(HashNode):
 class Multi(Node):
     def __init__(self, k, keys):
         assert 1 <= k <= len(keys)
-        assert all(isinstance(k, MiniscriptKey) for k in keys)
+        assert all(isinstance(k, DescriptorKey) for k in keys)
 
         self.k = k
         self.keys = keys

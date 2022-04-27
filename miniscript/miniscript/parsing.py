@@ -4,7 +4,8 @@ Utilities to parse Miniscript from string and Script representations.
 
 import miniscript.miniscript.fragments as fragments
 
-from .key import MiniscriptKey
+from miniscript.key import DescriptorKey
+
 from .script import (
     CScriptOp,
     OP_ADD,
@@ -687,7 +688,7 @@ def parse_one(string):
             k = int(params.pop(0))
             key_n = []
             for param in params:
-                key_obj = MiniscriptKey(param)
+                key_obj = DescriptorKey(param)
                 key_n.append(key_obj)
             return fragments.Multi(k, key_n), remaining
 

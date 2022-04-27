@@ -1,6 +1,6 @@
 import hashlib
 
-from miniscript.miniscript.key import MiniscriptKey
+from miniscript.key import MiniscriptKey
 from miniscript.miniscript.fragments import Node, hash160
 from miniscript.miniscript.script import CScript
 
