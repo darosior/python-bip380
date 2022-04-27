@@ -119,10 +119,10 @@ class Satisfaction:
         :param disjunction: Whether this fragment has an 'or()' semantic.
         """
         if disjunction:
-            return (sub_b.dissatisfy() + sub_a.satisfy(sat_material)) | (
-                sub_b.satisfy(sat_material) + sub_a.dissatisfy()
+            return (sub_b.dissatisfaction() + sub_a.satisfaction(sat_material)) | (
+                sub_b.satisfaction(sat_material) + sub_a.dissatisfaction()
             )
-        return sub_b.satisfy(sat_material) + sub_a.satisfy(sat_material)
+        return sub_b.satisfaction(sat_material) + sub_a.satisfaction(sat_material)
 
     def from_or_uneven(sat_material, sub_a, sub_b):
         """Get the satisfaction for a Miniscript which unconditionally executes a first
@@ -131,8 +131,8 @@ class Satisfaction:
         :param sub_a: The sub-fragment A.
         :param sub_b: The sub-fragment B.
         """
-        return sub_a.satisfy(sat_material) | (
-            sub_b.satisfy(sat_material) + sub_a.dissatisfy()
+        return sub_a.satisfaction(sat_material) | (
+            sub_b.satisfaction(sat_material) + sub_a.dissatisfaction()
         )
 
     def from_thresh(sat_material, k, subs):
@@ -149,7 +149,7 @@ class Satisfaction:
         # Record the unavailable (in either way) ones as we go.
         arbitrage, unsatisfiable, undissatisfiable = [], [], []
         for sub in subs:
-            sat, dissat = sub.satisfy(sat_material), sub.dissatisfy()
+            sat, dissat = sub.satisfaction(sat_material), sub.dissatisfaction()
             if sat.witness is None:
                 unsatisfiable.append(sub)
             elif dissat.witness is None:
@@ -169,7 +169,9 @@ class Satisfaction:
         to_satisfy = set(optimal_sat[:k])
         return sum(
             [
-                sub.satisfy(sat_material) if sub in to_satisfy else sub.dissatisfy()
+                sub.satisfaction(sat_material)
+                if sub in to_satisfy
+                else sub.dissatisfaction()
                 for sub in subs[::-1]
             ],
             start=Satisfaction(witness=[]),

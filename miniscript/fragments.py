@@ -105,6 +105,18 @@ class Node:
         return CScript(self._script)
 
     def satisfy(self, sat_material):
+        """Get the witness of the smallest non-malleable satisfaction for this fragment,
+        if one exists.
+
+        :param sat_material: a SatisfactionMaterial containing available data to satisfy
+                             challenges.
+        """
+        sat = self.satisfaction(sat_material)
+        if not sat.has_sig:
+            return None
+        return sat.witness
+
+    def satisfaction(self, sat_material):
         """Get the satisfaction for this fragment.
 
         :param sat_material: a SatisfactionMaterial containing available data to satisfy
@@ -113,7 +125,7 @@ class Node:
         # Needs to be implemented by derived classes.
         raise NotImplementedError
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         """Get the dissatisfaction for this fragment."""
         # Needs to be implemented by derived classes.
         raise NotImplementedError
@@ -136,10 +148,10 @@ class Just0(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(0, 0, None, 0)
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         return Satisfaction.unavailable()
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction(witness=[])
 
     def __repr__(self):
@@ -163,10 +175,10 @@ class Just1(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(0, 0, 0, None)
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         return Satisfaction(witness=[])
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction.unavailable()
 
     def __repr__(self):
@@ -209,13 +221,13 @@ class Pk(PkNode):
         self.p = Property("Konud")
         self.exec_info = ExecutionInfo(0, 0, 0, 0)
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         sig = sat_material.signatures.get(self.pubkey.bytes())
         if sig is None:
             return Satisfaction.unavailable()
         return Satisfaction([sig], has_sig=True)
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction(witness=[b""])
 
     def __repr__(self):
@@ -232,13 +244,13 @@ class Pkh(Node):
         self.p = Property("Knud")
         self.exec_info = ExecutionInfo(3, 0, 1, 1)
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         sig = sat_material.signatures.get(self.pubkey.bytes())
         if sig is None:
             return Satisfaction.unavailable()
         return Satisfaction(witness=[sig, self.pubkey.bytes()], has_sig=True)
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction(witness=[b"", self.pubkey.bytes()])
 
     def __repr__(self):
@@ -268,12 +280,12 @@ class Older(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(1, 0, 0, None)
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         if sat_material.max_sequence < self.value:
             return Satisfaction.unavailable()
         return Satisfaction(witness=[])
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction.unavailable()
 
     def __repr__(self):
@@ -299,12 +311,12 @@ class After(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(1, 0, 0, None)
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         if sat_material.max_lock_time < self.value:
             return Satisfaction.unavailable()
         return Satisfaction(witness=[])
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction.unavailable()
 
     def __repr__(self):
@@ -335,13 +347,13 @@ class HashNode(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(4, 0, 1, None)
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         preimage = sat_material.preimages.get(self.digest)
         if preimage is None:
             return Satisfaction.unavailable()
         return Satisfaction(witness=[preimage])
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction.unavailable()
         return Satisfaction(witness=[b""])
 
@@ -403,7 +415,7 @@ class Multi(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(1, len(keys), 1 + k, 1 + k)
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         sigs = []
         for key in self.keys:
             sig = sat_material.signatures.get(key.bytes())
@@ -416,7 +428,7 @@ class Multi(Node):
             return Satisfaction.unavailable()
         return Satisfaction(witness=[b""] + sigs, has_sig=True)
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction(witness=[b""] * (self.k + 1))
 
     def __repr__(self):
@@ -457,10 +469,10 @@ class AndV(Node):
         self.exec_info = ExecutionInfo.from_concat(sub_x.exec_info, sub_y.exec_info)
         self.exec_info.set_undissatisfiable()  # it's V.
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         return Satisfaction.from_concat(sat_material, *self.subs)
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction.unavailable()  # it's V.
 
     def __repr__(self):
@@ -511,11 +523,11 @@ class AndB(Node):
             sub_x.exec_info, sub_y.exec_info, ops_count=1
         )
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         return Satisfaction.from_concat(sat_material, self.subs[0], self.subs[1])
 
-    def dissatisfy(self):
-        return self.subs[1].dissatisfy() + self.subs[0].dissatisfy()
+    def dissatisfaction(self):
+        return self.subs[1].dissatisfaction() + self.subs[0].dissatisfaction()
 
     def __repr__(self):
         return f"and_b({','.join(map(str, self.subs))})"
@@ -549,13 +561,13 @@ class OrB(Node):
             sub_x.exec_info, sub_z.exec_info, ops_count=1, disjunction=True
         )
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         return Satisfaction.from_concat(
             sat_material, self.subs[0], self.subs[1], disjunction=True
         )
 
-    def dissatisfy(self):
-        return self.subs[1].dissatisfy() + self.subs[0].dissatisfy()
+    def dissatisfaction(self):
+        return self.subs[1].dissatisfaction() + self.subs[0].dissatisfaction()
 
     def __repr__(self):
         return f"or_b({','.join(map(str, self.subs))})"
@@ -591,10 +603,10 @@ class OrC(Node):
         )
         self.exec_info.set_undissatisfiable()  # it's V.
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         return Satisfaction.from_or_uneven(sat_material, self.subs[0], self.subs[1])
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction.unavailable()  # it's V.
 
     def __repr__(self):
@@ -633,11 +645,11 @@ class OrD(Node):
             sub_x.exec_info, sub_z.exec_info, ops_count=3
         )
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         return Satisfaction.from_or_uneven(sat_material, self.subs[0], self.subs[1])
 
-    def dissatisfy(self):
-        return self.subs[1].dissatisfy() + self.subs[0].dissatisfy()
+    def dissatisfaction(self):
+        return self.subs[1].dissatisfaction() + self.subs[0].dissatisfaction()
 
     def __repr__(self):
         return f"or_d({','.join(map(str, self.subs))})"
@@ -676,14 +688,14 @@ class OrI(Node):
             sub_x.exec_info, sub_z.exec_info, ops_count=3
         )
 
-    def satisfy(self, sat_material):
-        return (self.subs[0].satisfy(sat_material) + Satisfaction([b"\x01"])) | (
-            self.subs[1].satisfy(sat_material) + Satisfaction([b""])
+    def satisfaction(self, sat_material):
+        return (self.subs[0].satisfaction(sat_material) + Satisfaction([b"\x01"])) | (
+            self.subs[1].satisfaction(sat_material) + Satisfaction([b""])
         )
 
-    def dissatisfy(self):
-        return (self.subs[0].dissatisfy() + Satisfaction(witness=[b"\x01"])) | (
-            self.subs[1].dissatisfy() + Satisfaction(witness=[b""])
+    def dissatisfaction(self):
+        return (self.subs[0].dissatisfaction() + Satisfaction(witness=[b"\x01"])) | (
+            self.subs[1].dissatisfaction() + Satisfaction(witness=[b""])
         )
 
     def __repr__(self):
@@ -749,15 +761,16 @@ class AndOr(Node):
             sub_x.exec_info, sub_y.exec_info, sub_z.exec_info, ops_count=3
         )
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         # (A and B) or (!A and C)
         return (
-            self.subs[1].satisfy(sat_material) + self.subs[0].satisfy(sat_material)
-        ) | (self.subs[2].satisfy(sat_material) + self.subs[0].dissatisfy())
+            self.subs[1].satisfaction(sat_material)
+            + self.subs[0].satisfaction(sat_material)
+        ) | (self.subs[2].satisfaction(sat_material) + self.subs[0].dissatisfaction())
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         # Dissatisfy X and Z
-        return self.subs[2].dissatisfy() + self.subs[0].dissatisfy()
+        return self.subs[2].dissatisfaction() + self.subs[0].dissatisfaction()
 
     def __repr__(self):
         return f"andor({','.join(map(str, self.subs))})"
@@ -836,12 +849,12 @@ class Thresh(Node):
             )
         self.exec_info = ExecutionInfo.from_thresh(k, [sub.exec_info for sub in subs])
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         return Satisfaction.from_thresh(sat_material, self.k, self.subs)
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return sum(
-            [sub.dissatisfy() for sub in self.subs], start=Satisfaction(witness=[])
+            [sub.dissatisfaction() for sub in self.subs], start=Satisfaction(witness=[])
         )
 
     def __repr__(self):
@@ -874,13 +887,13 @@ class WrapperNode(Node):
             and self.rel_timelocks
         )
 
-    def satisfy(self, sat_material):
+    def satisfaction(self, sat_material):
         # Most wrappers are satisfied this way, for special cases it's overriden.
-        return self.subs[0].satisfy(sat_material)
+        return self.subs[0].satisfaction(sat_material)
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         # Most wrappers are satisfied this way, for special cases it's overriden.
-        return self.subs[0].dissatisfy()
+        return self.subs[0].dissatisfaction()
 
 
 class WrapA(WrapperNode):
@@ -966,10 +979,10 @@ class WrapD(WrapperNode):
             sub.exec_info, ops_count=3, sat=1, dissat=1
         )
 
-    def satisfy(self, sat_material):
-        return Satisfaction(witness=[b"\x01"]) + self.subs[0].satisfy(sat_material)
+    def satisfaction(self, sat_material):
+        return Satisfaction(witness=[b"\x01"]) + self.subs[0].satisfaction(sat_material)
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction(witness=[b""])
 
     def __repr__(self):
@@ -999,7 +1012,7 @@ class WrapV(WrapperNode):
         verify_cost = int(self._script[-1] == OP_VERIFY)
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=verify_cost)
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction.unavailable()  # It's V.
 
     def __repr__(self):
@@ -1023,7 +1036,7 @@ class WrapJ(WrapperNode):
             sub.exec_info, ops_count=4, dissat=1
         )
 
-    def dissatisfy(self):
+    def dissatisfaction(self):
         return Satisfaction(witness=[b""])
 
     def __repr__(self):

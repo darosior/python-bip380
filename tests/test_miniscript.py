@@ -170,8 +170,8 @@ def test_compat_valid():
             ms_str, hexscript = line.strip().split(" ")
             ms = miniscript_from_str(ms_str)
             assert ms.script.hex() == hexscript
-            ms.satisfy(SatisfactionMaterial())
-            ms.dissatisfy()
+            ms.satisfaction(SatisfactionMaterial())
+            ms.dissatisfaction()
 
 
 def test_compat_invalid():
@@ -554,10 +554,10 @@ def test_satisfy_simple_combs():
             for multi_threshold in range(1, 21):
                 h_frag = h_func(digest)
                 # Without the preimage in the material, it can't satisfy it
-                assert h_frag.satisfy(sat_material).witness is None
+                assert h_frag.satisfaction(sat_material).witness is None
                 # Now if we set it it'll be able to
                 sat_material.preimages[h_frag.digest] = preimage
-                assert h_frag.satisfy(sat_material).witness == [preimage]
+                assert h_frag.satisfaction(sat_material).witness == [preimage]
                 or_frag = fragments.OrB(
                     h_frag,
                     fragments.WrapS(
@@ -565,14 +565,14 @@ def test_satisfy_simple_combs():
                     ),
                 )
                 # Without the ability to satisfy the timelock, it'll choose the hash path.
-                assert or_frag.satisfy(sat_material).witness == [b"", preimage]
+                assert or_frag.satisfaction(sat_material).witness == [b"", preimage]
                 # But if we tell it the timelock can be satisfied it'll still not choose that since
                 # dissatisfying a hash is malleable.
                 if tl_func is fragments.Older:
                     sat_material.max_sequence = timelock
                 if tl_func is fragments.After:
                     sat_material.max_sequence = timelock
-                assert or_frag.satisfy(sat_material).witness == [b"", preimage]
+                assert or_frag.satisfaction(sat_material).witness == [b"", preimage]
                 # Now if we make it non-malleably dissatisfiable, it'll choose the timelock path as it's cheaper.
                 h_frag = fragments.WrapJ(h_frag)
                 or_frag = fragments.OrB(
@@ -581,27 +581,33 @@ def test_satisfy_simple_combs():
                         fragments.WrapD(fragments.WrapV(fragments.Older(timelock)))
                     ),
                 )
-                assert or_frag.satisfy(sat_material).witness == [b"\x01", b""]
+                assert or_frag.satisfaction(sat_material).witness == [b"\x01", b""]
                 # It won't be able to satisfy the and_v() without enough sigs
                 frag = fragments.AndV(
                     fragments.WrapV(fragments.Multi(multi_threshold, keys)),
                     or_frag,
                 )
-                assert frag.satisfy(sat_material).witness is None
+                assert frag.satisfaction(sat_material).witness is None
                 for pubkey, sig in dummy_sigs[: multi_threshold - 1]:
                     sat_material.signatures[pubkey] = sig
-                assert frag.satisfy(sat_material).witness is None
+                assert frag.satisfaction(sat_material).witness is None
                 # Just enough sigs is sufficient
                 pubkey, sig = dummy_sigs[multi_threshold - 1]
                 sat_material.signatures[pubkey] = sig
-                assert frag.satisfy(sat_material).witness == [b"\x01", b"", b""] + list(
-                    sat_material.signatures.values()
+                assert (
+                    frag.satisfaction(sat_material).witness
+                    == [
+                        b"\x01",
+                        b"",
+                        b"",
+                    ]
+                    + list(sat_material.signatures.values())
                 )
                 # Now if we remove the timelocks it'll get back to satisfy using the hash preimage
                 sat_material.max_sequence = 0
                 sat_material.max_timelock = 0
                 assert (
-                    frag.satisfy(sat_material).witness
+                    frag.satisfaction(sat_material).witness
                     == [
                         b"",
                         preimage,
@@ -617,23 +623,23 @@ def test_satisfy_simple_combs():
     pkh_frag = fragments.Pkh(keys[2])
     or_i_frag = fragments.OrI(pk_frag_a, pkh_frag)
     # No signature, no satisfaction.
-    assert or_i_frag.satisfy(sat_material).witness is None
+    assert or_i_frag.satisfaction(sat_material).witness is None
     # Need only one side for having a satisfaction
     pubkey, sig = dummy_sigs[2]
     sat_material.signatures[pubkey] = sig
-    assert or_i_frag.satisfy(sat_material).witness == [sig, pubkey, b""]
+    assert or_i_frag.satisfaction(sat_material).witness == [sig, pubkey, b""]
     # However if the pk() satisfaction is also available, it'll choose it as it's smaller
     pubkey, sig = dummy_sigs[0]
     sat_material.signatures[pubkey] = sig
-    assert or_i_frag.satisfy(sat_material).witness == [sig, b"\x01"]
+    assert or_i_frag.satisfaction(sat_material).witness == [sig, b"\x01"]
     # If we add a requirement for another, it'll fail without the sig and succeed with it
     and_b_frag = fragments.AndB(
         fragments.WrapC(or_i_frag), fragments.WrapA(fragments.WrapC(pk_frag_b))
     )
-    assert and_b_frag.satisfy(sat_material).witness is None
+    assert and_b_frag.satisfaction(sat_material).witness is None
     pubkey2, sig2 = dummy_sigs[1]
     sat_material.signatures[pubkey2] = sig2
-    assert and_b_frag.satisfy(sat_material).witness == [
+    assert and_b_frag.satisfaction(sat_material).witness == [
         sig2,
         sig,
         b"\x01",
@@ -643,15 +649,15 @@ def test_satisfy_simple_combs():
     check_pk_a = fragments.WrapC(pk_frag_a)
     check_pk_b = fragments.WrapC(pk_frag_b)
     or_c_frag = fragments.OrC(check_pk_a, fragments.WrapV(check_pk_b))
-    assert or_c_frag.satisfy(sat_material).witness is None
+    assert or_c_frag.satisfaction(sat_material).witness is None
     pubkey, sig = dummy_sigs[0]
     sat_material.signatures[pubkey] = sig
-    assert or_c_frag.satisfy(sat_material).witness == [sig]
+    assert or_c_frag.satisfaction(sat_material).witness == [sig]
     pubkey2, sig2 = dummy_sigs[1]
     sat_material.signatures[pubkey2] = sig2
-    assert or_c_frag.satisfy(sat_material).witness == [sig]
+    assert or_c_frag.satisfaction(sat_material).witness == [sig]
     del sat_material.signatures[pubkey]
-    assert or_c_frag.satisfy(sat_material).witness == [sig2, b""]
+    assert or_c_frag.satisfaction(sat_material).witness == [sig2, b""]
     sat_material.clear()
 
     check_pkh_c = fragments.WrapC(pkh_frag)
@@ -669,11 +675,11 @@ def test_satisfy_simple_combs():
             fragments.WrapS(check_pk_e),
         ],
     )
-    assert thresh_frag.satisfy(sat_material).witness is None
+    assert thresh_frag.satisfaction(sat_material).witness is None
     # Add the sig to satisfy the last sub
     pubkey_e, sig_e = dummy_sigs[4]
     sat_material.signatures[pubkey_e] = sig_e
-    assert thresh_frag.satisfy(sat_material).witness == [
+    assert thresh_frag.satisfaction(sat_material).witness == [
         sig_e,  # pk E
         b"",  # pk D
         b"",  # pkh C
@@ -690,11 +696,11 @@ def test_satisfy_simple_combs():
             fragments.WrapS(check_pk_e),
         ],
     )
-    assert thresh_frag.satisfy(sat_material).witness is None
+    assert thresh_frag.satisfaction(sat_material).witness is None
     # Satisfy the first sub, in the two available ways
     pubkey_a, sig_a = dummy_sigs[0]
     sat_material.signatures[pubkey_a] = sig_a
-    assert thresh_frag.satisfy(sat_material).witness == [
+    assert thresh_frag.satisfaction(sat_material).witness == [
         sig_e,  # pk E
         b"",  # pk D
         b"",  # pkh C
@@ -704,7 +710,7 @@ def test_satisfy_simple_combs():
     pubkey_b, sig_b = dummy_sigs[1]
     sat_material.signatures[pubkey_b] = sig_b
     del sat_material.signatures[pubkey_a]
-    assert thresh_frag.satisfy(sat_material).witness == [
+    assert thresh_frag.satisfaction(sat_material).witness == [
         sig_e,  # pk E
         b"",  # pk D
         b"",  # pkh C
@@ -721,10 +727,10 @@ def test_satisfy_simple_combs():
             fragments.WrapS(check_pk_e),
         ],
     )
-    assert thresh_frag.satisfy(sat_material).witness is None
+    assert thresh_frag.satisfaction(sat_material).witness is None
     pubkey_d, sig_d = dummy_sigs[3]
     sat_material.signatures[pubkey_d] = sig_d
-    assert thresh_frag.satisfy(sat_material).witness == [
+    assert thresh_frag.satisfaction(sat_material).witness == [
         sig_e,  # pk E
         sig_d,  # pk D
         b"",  # pkh C
@@ -735,9 +741,9 @@ def test_satisfy_simple_combs():
     del sat_material.signatures[pubkey_d]
     pubkey_c, sig_c = dummy_sigs[2]
     sat_material.signatures[pubkey_c] = sig_c
-    assert thresh_frag.satisfy(sat_material).witness is None
+    assert thresh_frag.satisfaction(sat_material).witness is None
     sat_material.max_lock_time = 1_000
-    assert thresh_frag.satisfy(sat_material).witness == [
+    assert thresh_frag.satisfaction(sat_material).witness == [
         sig_e,  # pk E
         sig_c,  # pkh C
         pubkey_c,  # pkh C
@@ -746,7 +752,14 @@ def test_satisfy_simple_combs():
     ]
 
 
-def sat_test(fragment, keypairs={}, max_sequence=0, max_lock_time=0):
+def sat_test(
+    fragment,
+    keypairs={},
+    preimages={},
+    max_sequence=0,
+    max_lock_time=0,
+    malleable=False,
+):
     """Test a fragment's satisfaction against libbitcoinconsensus."""
     amount = 10_000
     txid = bytes.fromhex(
@@ -762,7 +775,7 @@ def sat_test(fragment, keypairs={}, max_sequence=0, max_lock_time=0):
     # Now populate the "signing data". Tell the satisfier about the available timelocks
     # and signatures. Since we'll check them, produce valid sigs for the dummy tx.
     sat_material = SatisfactionMaterial(
-        max_sequence=max_sequence, max_lock_time=max_lock_time
+        preimages=preimages, max_sequence=max_sequence, max_lock_time=max_lock_time
     )
     sighash = RawBitcoinSignatureHash(
         script=fragment.script,
@@ -775,9 +788,14 @@ def sat_test(fragment, keypairs={}, max_sequence=0, max_lock_time=0):
     for pubkey, privkey in keypairs.items():
         sig = coincurve.PrivateKey(privkey).sign(sighash, hasher=None)
         sat_material.signatures[pubkey] = sig + b"\x01"  # SIGHASH_ALL
-    witness_stack = CScriptWitness(
-        fragment.satisfy(sat_material).witness + [fragment.script]
-    )
+    if malleable:
+        witness_stack = CScriptWitness(
+            fragment.satisfaction(sat_material).witness + [fragment.script]
+        )
+    else:
+        witness_stack = CScriptWitness(
+            fragment.satisfy(sat_material) + [fragment.script]
+        )
     # VerifyScript might be able to debug some very simple scripts, but is buggy and
     # outdated (a failing CHECKSIG doesn't return the empty vector, no implementation
     # of CSV and CLTV, and more that i didn't bother to trace down) so it makes it hard
@@ -815,7 +833,7 @@ def test_satisfaction_validity():
     }
     pubkeys = list(keypairs.keys())
 
-    sat_test(fragments.Just1())
+    sat_test(fragments.Just1(), malleable=True)
 
     pk_frag = fragments.WrapC(fragments.Pk(MiniscriptKey(pubkeys[0])))
     pk_keypairs = {pubkeys[0]: keypairs[pubkeys[0]]}
@@ -832,10 +850,10 @@ def test_satisfaction_validity():
     )
 
     older_frag = fragments.Older(2)
-    sat_test(older_frag, max_sequence=2)
+    sat_test(older_frag, max_sequence=2, malleable=True)
 
     after_frag = fragments.After(2)
-    sat_test(after_frag, max_lock_time=2)
+    sat_test(after_frag, max_lock_time=2, malleable=True)
 
     multi_keys, multi_keypairs = [], {}
     for n in range(1, 21):
@@ -972,3 +990,13 @@ def test_satisfaction_validity():
     sat_test(thresh_frag, keypairs=thresh_keypairs)
     thresh_keypairs = {pub: keypairs[pub] for pub in pubkeys[:3] + pubkeys[4:]}
     sat_test(thresh_frag, keypairs=thresh_keypairs)
+
+    preimage = os.urandom(32)
+    for h_frag, digest in [
+        (fragments.Sha256, sha256(preimage)),
+        (fragments.Hash256, hash256(preimage)),
+        (fragments.Ripemd160, ripemd160(preimage)),
+        (fragments.Hash160, hash160(preimage.hex())),
+    ]:
+        andv_frag = fragments.AndV(fragments.WrapV(pk_frag), h_frag(digest))
+        sat_test(andv_frag, keypairs=pk_keypairs, preimages={digest: preimage})
