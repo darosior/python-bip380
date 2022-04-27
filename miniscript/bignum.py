@@ -4,7 +4,8 @@
 # file LICENSE or http://www.opensource.org/licenses/mit-license.php.
 """Big number routines.
 
-This file is copied from python-bitcoinlib.
+This file is taken from the Bitcoin Core test framework. It was previously
+copied from python-bitcoinlib.
 """
 
 import struct
