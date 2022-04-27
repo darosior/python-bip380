@@ -1,8 +1,7 @@
-import hashlib
-
 from miniscript.key import MiniscriptKey
-from miniscript.miniscript.fragments import Node, hash160
+from miniscript.miniscript.fragments import Node
 from miniscript.miniscript.script import CScript
+from miniscript.utils.hashes import sha256, hash160
 
 
 class Descriptor:
@@ -41,8 +40,7 @@ class WshDescriptor(Descriptor):
         return f"wsh({self.witness_script})"
 
     def script_pubkey(self):
-        # TODO: have a utils module with hashes routines
-        witness_program = hashlib.sha256(self.witness_script).digest()
+        witness_program = sha256(self.witness_script)
         return CScript([0, witness_program])
 
     def satisfy(self, sat_material=None):
@@ -68,7 +66,6 @@ class WpkhDescriptor(Descriptor):
         return f"wpkh({self.pubkey})"
 
     def script_pubkey(self):
-        # TODO: have a utils module with hashes routines
         witness_program = hash160(self.pubkey.bytes())
         return CScript([0, witness_program])
 

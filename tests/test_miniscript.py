@@ -24,7 +24,7 @@ from itertools import chain
 from miniscript.key import DescriptorKey
 from miniscript.miniscript import fragments
 from miniscript.miniscript.satisfaction import SatisfactionMaterial
-from miniscript.miniscript.script import CScript
+from miniscript.utils.script import CScript
 
 
 def dummy_pk():

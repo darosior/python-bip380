@@ -6,15 +6,11 @@ See the Miniscript website for the specification of the type system: https://bit
 """
 
 import copy
-import hashlib
 import miniscript.miniscript.parsing as parsing
 
 from miniscript.key import DescriptorKey
-
-from .errors import MiniscriptNodeCreationError
-from .property import Property
-from .satisfaction import ExecutionInfo, Satisfaction
-from .script import (
+from miniscript.utils.hashes import hash160
+from miniscript.utils.script import (
     CScript,
     OP_1,
     OP_0,
@@ -47,6 +43,10 @@ from .script import (
     OP_0NOTEQUAL,
 )
 
+from .errors import MiniscriptNodeCreationError
+from .property import Property
+from .satisfaction import ExecutionInfo, Satisfaction
+
 
 # Threshold for nLockTime: below this value it is interpreted as block number,
 # otherwise as UNIX timestamp.
@@ -56,12 +56,6 @@ LOCKTIME_THRESHOLD = 500000000  # Tue Nov  5 00:53:20 1985 UTC
 # is set, the relative lock-time has units of 512 seconds,
 # otherwise it specifies blocks with a granularity of 1.
 SEQUENCE_LOCKTIME_TYPE_FLAG = 1 << 22
-
-
-def hash160(data):
-    """{data} must be bytes, returns ripemd160(sha256(data))"""
-    sha2 = hashlib.sha256(data).digest()
-    return hashlib.new("ripemd160", sha2).digest()
 
 
 class Node:

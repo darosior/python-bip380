@@ -5,8 +5,7 @@ Utilities to parse Miniscript from string and Script representations.
 import miniscript.miniscript.fragments as fragments
 
 from miniscript.key import DescriptorKey
-
-from .script import (
+from miniscript.utils.script import (
     CScriptOp,
     OP_ADD,
     OP_BOOLAND,
