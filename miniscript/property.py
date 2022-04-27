@@ -3,12 +3,8 @@
 # Distributed under the MIT software license, see the accompanying
 # file LICENSE or http://www.opensource.org/licenses/mit-license.php.
 
-class MiniscriptPropertyError(ValueError):
-    def __init__(self, message):
-        self.message = message
+from errors import MiniscriptPropertyError
 
-
-# FIXME: should we separate type and properties?
 # TODO: implement __eq__
 class Property:
     """Miniscript expression property"""
