@@ -7,7 +7,7 @@ See the Miniscript website for the specification of the type system: https://bit
 
 import copy
 import hashlib
-import miniscript.parsing as parsing
+import miniscript.miniscript.parsing as parsing
 
 from .errors import MiniscriptNodeCreationError
 from .key import MiniscriptKey

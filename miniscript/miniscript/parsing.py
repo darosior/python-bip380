@@ -2,7 +2,7 @@
 Utilities to parse Miniscript from string and Script representations.
 """
 
-import miniscript.fragments as fragments
+import miniscript.miniscript.fragments as fragments
 
 from .key import MiniscriptKey
 from .script import (
