@@ -172,8 +172,12 @@ class Just1(Node):
         return "1"
 
 
-# TODO: A PkNode class to inherit those two from?
-class Pk(Node):
+class PkNode(Node):
+    """A virtual class for nodes containing a single public key.
+
+    Should not be instanced directly, use Pk() or Pkh().
+    """
+
     def __init__(self, pubkey):
         Node.__init__(self)
 
@@ -182,11 +186,9 @@ class Pk(Node):
         elif isinstance(pubkey, MiniscriptKey):
             self.pubkey = pubkey
         else:
-            raise MiniscriptNodeCreationError("Invalid pubkey for pk_k node")
-        self._script = [self.pubkey.bytes()]
+            raise MiniscriptNodeCreationError("Invalid public key")
 
-        self.p = Property("Konud")
-        self.needs_sig = True  # FIXME: doesn't make much sense, keep it in 'c:'
+        self.needs_sig = True  # FIXME: think about having it in 'c:' instead
         self.is_forced = False
         self.is_expressive = True
         self.is_nonmalleable = True
@@ -195,6 +197,16 @@ class Pk(Node):
         self.abs_timelocks = False
         self.rel_timelocks = False
         self.no_timelock_mix = True
+
+
+# TODO: A PkNode class to inherit those two from?
+class Pk(PkNode):
+    def __init__(self, pubkey):
+        PkNode.__init__(self, pubkey)
+
+        self._script = [self.pubkey.bytes()]
+
+        self.p = Property("Konud")
         self.exec_info = ExecutionInfo(0, 0, 0, 0)
 
     def satisfy(self, sat_material):
@@ -213,26 +225,11 @@ class Pk(Node):
 class Pkh(Node):
     # FIXME: should we support a hash here, like rust-bitcoin? I don't think it's safe.
     def __init__(self, pubkey):
-        Node.__init__(self)
+        PkNode.__init__(self, pubkey)
 
-        if isinstance(pubkey, bytes) or isinstance(pubkey, str):
-            self.pubkey = MiniscriptKey(pubkey)
-        elif isinstance(pubkey, MiniscriptKey):
-            self.pubkey = pubkey
-        else:
-            raise MiniscriptNodeCreationError("Invalid pubkey for pk_k node")
         self._script = [OP_DUP, OP_HASH160, self.pk_hash(), OP_EQUALVERIFY]
 
         self.p = Property("Knud")
-        self.needs_sig = True  # FIXME: see pk()
-        self.is_forced = False
-        self.is_expressive = True
-        self.is_nonmalleable = True
-        self.abs_heightlocks = False
-        self.rel_heightlocks = False
-        self.abs_timelocks = False
-        self.rel_timelocks = False
-        self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(3, 0, 1, 1)
 
     def satisfy(self, sat_material):
@@ -316,14 +313,18 @@ class After(Node):
         return f"after({self.value})"
 
 
-# TODO: a superclass HashNode makes a lot of sense given the amount of shared code.
-class Sha256(Node):
-    def __init__(self, digest):
-        assert isinstance(digest, bytes) and len(digest) == 32
+class HashNode(Node):
+    """A virtual class for fragments with hashlock semantics.
+
+    Should not be instanced directly, use concrete fragments instead.
+    """
+
+    def __init__(self, digest, hash_op):
+        assert isinstance(digest, bytes)  # TODO: real errors
         Node.__init__(self)
 
         self.digest = digest
-        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_SHA256, digest, OP_EQUAL]
+        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, hash_op, digest, OP_EQUAL]
 
         self.p = Property("Bonud")
         self.needs_sig = False
@@ -346,108 +347,39 @@ class Sha256(Node):
     def dissatisfy(self):
         return Satisfaction.unavailable()
         return Satisfaction(witness=[b""])
+
+
+class Sha256(HashNode):
+    def __init__(self, digest):
+        assert len(digest) == 32  # TODO: real errors
+        HashNode.__init__(self, digest, OP_SHA256)
 
     def __repr__(self):
         return f"sha256({self.digest.hex()})"
 
 
-class Hash256(Node):
+class Hash256(HashNode):
     def __init__(self, digest):
-        assert isinstance(digest, bytes) and len(digest) == 32
-        Node.__init__(self)
-
-        self.digest = digest
-        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH256, digest, OP_EQUAL]
-
-        self.p = Property("Bonud")
-        self.needs_sig = False
-        self.is_forced = False
-        self.is_expressive = False
-        self.is_nonmalleable = True
-        self.abs_heightlocks = False
-        self.rel_heightlocks = False
-        self.abs_timelocks = False
-        self.rel_timelocks = False
-        self.no_timelock_mix = True
-        self.exec_info = ExecutionInfo(4, 0, 1, None)
-
-    def satisfy(self, sat_material):
-        preimage = sat_material.preimages.get(self.digest)
-        if preimage is None:
-            return Satisfaction.unavailable()
-        return Satisfaction(witness=[preimage])
-
-    def dissatisfy(self):
-        return Satisfaction.unavailable()
-        return Satisfaction(witness=[b""])
+        assert len(digest) == 32  # TODO: real errors
+        HashNode.__init__(self, digest, OP_HASH256)
 
     def __repr__(self):
         return f"hash256({self.digest.hex()})"
 
 
-class Ripemd160(Node):
+class Ripemd160(HashNode):
     def __init__(self, digest):
-        assert isinstance(digest, bytes) and len(digest) == 20
-        Node.__init__(self)
-
-        self.p = Property("Bonud")
-        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, digest, OP_EQUAL]
-
-        self.digest = digest
-        self.needs_sig = False
-        self.is_forced = False
-        self.is_expressive = False
-        self.is_nonmalleable = True
-        self.abs_heightlocks = False
-        self.rel_heightlocks = False
-        self.abs_timelocks = False
-        self.rel_timelocks = False
-        self.no_timelock_mix = True
-        self.exec_info = ExecutionInfo(4, 0, 1, None)
-
-    def satisfy(self, sat_material):
-        preimage = sat_material.preimages.get(self.digest)
-        if preimage is None:
-            return Satisfaction.unavailable()
-        return Satisfaction(witness=[preimage])
-
-    def dissatisfy(self):
-        return Satisfaction.unavailable()
-        return Satisfaction(witness=[b""])
+        assert len(digest) == 20  # TODO: real errors
+        HashNode.__init__(self, digest, OP_RIPEMD160)
 
     def __repr__(self):
         return f"ripemd160({self.digest.hex()})"
 
 
-class Hash160(Node):
+class Hash160(HashNode):
     def __init__(self, digest):
-        assert isinstance(digest, bytes) and len(digest) == 20
-        Node.__init__(self)
-
-        self.digest = digest
-        self._script = [OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH160, digest, OP_EQUAL]
-
-        self.p = Property("Bonud")
-        self.needs_sig = False
-        self.is_forced = False
-        self.is_expressive = False
-        self.is_nonmalleable = True
-        self.abs_heightlocks = False
-        self.rel_heightlocks = False
-        self.abs_timelocks = False
-        self.rel_timelocks = False
-        self.no_timelock_mix = True
-        self.exec_info = ExecutionInfo(4, 0, 1, None)
-
-    def satisfy(self, sat_material):
-        preimage = sat_material.preimages.get(self.digest)
-        if preimage is None:
-            return Satisfaction.unavailable()
-        return Satisfaction(witness=[preimage])
-
-    def dissatisfy(self):
-        return Satisfaction.unavailable()
-        return Satisfaction(witness=[b""])
+        assert len(digest) == 20  # TODO: real errors
+        HashNode.__init__(self, digest, OP_HASH160)
 
     def __repr__(self):
         return f"hash160({self.digest.hex()})"
@@ -928,24 +860,18 @@ class Thresh(Node):
         return f"thresh({self.k},{','.join(map(str, self.subs))})"
 
 
-# TODO: make it a method of Node
-def is_wrapper(node):
-    """Whether the given node is a wrapper or not."""
-    return isinstance(
-        node, (WrapA, WrapS, WrapC, WrapD, WrapV, WrapJ, WrapL, WrapU, WrapT, WrapN)
-    )
+class WrapperNode(Node):
+    """A virtual base class for wrappers.
 
+    Don't instanciate it directly, use concret wrapper fragments instead.
+    """
 
-# TODO: a wrapper superclass with default implementation of methods for shared code.
-class WrapA(Node):
     def __init__(self, sub):
-        assert sub.p.B
         Node.__init__(self)
-
         self.subs = [sub]
-        self._script = [OP_TOALTSTACK, *sub._script, OP_FROMALTSTACK]
 
-        self.p = Property("W" + "".join(c for c in "ud" if getattr(sub.p, c)))
+        # Properties for most wrappers are directly inherited. When it's not, they
+        # are overriden in the fragment's __init__.
         self.needs_sig = sub.needs_sig
         self.is_forced = sub.is_forced
         self.is_expressive = sub.is_expressive
@@ -960,134 +886,95 @@ class WrapA(Node):
             or self.rel_heightlocks
             and self.rel_timelocks
         )
-        self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=2)
 
     def satisfy(self, sat_material):
+        # Most wrappers are satisfied this way, for special cases it's overriden.
         return self.subs[0].satisfy(sat_material)
 
     def dissatisfy(self):
+        # Most wrappers are satisfied this way, for special cases it's overriden.
         return self.subs[0].dissatisfy()
 
+
+class WrapA(WrapperNode):
+    def __init__(self, sub):
+        assert sub.p.B
+        WrapperNode.__init__(self, sub)
+
+        self._script = [OP_TOALTSTACK, *sub._script, OP_FROMALTSTACK]
+
+        self.p = Property("W" + "".join(c for c in "ud" if getattr(sub.p, c)))
+        self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=2)
+
     def __repr__(self):
-        if is_wrapper(self.subs[0]):
+        # Don't duplicate colons
+        if isinstance(self.subs[0], WrapperNode):
             return f"a{self.subs[0]}"
         return f"a:{self.subs[0]}"
 
 
-class WrapS(Node):
+class WrapS(WrapperNode):
     def __init__(self, sub):
         assert sub.p.has_all("Bo")
-        Node.__init__(self)
+        WrapperNode.__init__(self, sub)
 
-        self.subs = [sub]
         self._script = [OP_SWAP, *sub._script]
 
         self.p = Property("W" + "".join(c for c in "ud" if getattr(sub.p, c)))
-        self.needs_sig = sub.needs_sig
-        self.is_forced = sub.is_forced
-        self.is_expressive = sub.is_expressive
-        self.is_nonmalleable = sub.is_nonmalleable
-        self.abs_heightlocks = sub.abs_heightlocks
-        self.rel_heightlocks = sub.rel_heightlocks
-        self.abs_timelocks = sub.abs_timelocks
-        self.rel_timelocks = sub.rel_timelocks
-        self.no_timelock_mix = not (
-            self.abs_heightlocks
-            and self.abs_timelocks
-            or self.rel_heightlocks
-            and self.rel_timelocks
-        )
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
-
-    def satisfy(self, sat_material):
-        return self.subs[0].satisfy(sat_material)
-
-    def dissatisfy(self):
-        return self.subs[0].dissatisfy()
 
     def __repr__(self):
         # Avoid duplicating colons
-        if is_wrapper(self.subs[0]):
+        if isinstance(self.subs[0], WrapperNode):
             return f"s{self.subs[0]}"
         return f"s:{self.subs[0]}"
 
 
-class WrapC(Node):
+class WrapC(WrapperNode):
     def __init__(self, sub):
         assert sub.p.K
-        Node.__init__(self)
+        WrapperNode.__init__(self, sub)
 
-        self.subs = [sub]
         self._script = [*sub._script, OP_CHECKSIG]
 
         # FIXME: shouldn't n and d be default props on the website?
         self.p = Property("Bsu" + "".join(c for c in "dno" if getattr(sub.p, c)))
-        self.needs_sig = True
-        self.is_forced = sub.is_forced
-        self.is_expressive = sub.is_expressive
-        self.is_nonmalleable = sub.is_nonmalleable
-        self.abs_heightlocks = sub.abs_heightlocks
-        self.rel_heightlocks = sub.rel_heightlocks
-        self.abs_timelocks = sub.abs_timelocks
-        self.rel_timelocks = sub.rel_timelocks
-        self.no_timelock_mix = not (
-            self.abs_heightlocks
-            and self.abs_timelocks
-            or self.rel_heightlocks
-            and self.rel_timelocks
-        )
+        # FIXME: should need_sig be set to True here instead of in keys?
         self.exec_info = ExecutionInfo.from_wrap(
             sub.exec_info, ops_count=1, sat=1, dissat=1
         )
 
-    def satisfy(self, sat_material):
-        return self.subs[0].satisfy(sat_material)
-
-    def dissatisfy(self):
-        return self.subs[0].dissatisfy()
-
     def __repr__(self):
         # Avoid duplicating colons
-        if is_wrapper(self.subs[0]):
+        if isinstance(self.subs[0], WrapperNode):
             return f"c{self.subs[0]}"
         return f"c:{self.subs[0]}"
 
 
-# FIXME: shouldn't we just ser/deser the AndV class specifically instead?
-class WrapT(AndV):
+class WrapT(AndV, WrapperNode):
     def __init__(self, sub):
         AndV.__init__(self, sub, Just1())
 
+    def is_wrapper(self):
+        return True
+
     def __repr__(self):
         # Avoid duplicating colons
-        if is_wrapper(self.subs[0]):
+        if isinstance(self.subs[0], WrapperNode):
             return f"t{self.subs[0]}"
         return f"t:{self.subs[0]}"
 
 
-class WrapD(Node):
+class WrapD(WrapperNode):
     def __init__(self, sub):
         assert sub.p.has_all("Vz")
-        Node.__init__(self)
+        WrapperNode.__init__(self, sub)
 
-        self.subs = [sub]
         self._script = [OP_DUP, OP_IF, *sub._script, OP_ENDIF]
 
         self.p = Property("Bond")
-        self.needs_sig = sub.needs_sig
         self.is_forced = True  # sub is V
         self.is_expressive = True  # sub is V, and we add a single dissat
-        self.is_nonmalleable = sub.is_nonmalleable
-        self.abs_heightlocks = sub.abs_heightlocks
-        self.rel_heightlocks = sub.rel_heightlocks
-        self.abs_timelocks = sub.abs_timelocks
-        self.rel_timelocks = sub.rel_timelocks
-        self.no_timelock_mix = not (
-            self.abs_heightlocks
-            and self.abs_timelocks
-            or self.rel_heightlocks
-            and self.rel_timelocks
-        )
         self.exec_info = ExecutionInfo.from_wrap_dissat(
             sub.exec_info, ops_count=3, sat=1, dissat=1
         )
@@ -1100,17 +987,16 @@ class WrapD(Node):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if is_wrapper(self.subs[0]):
+        if isinstance(self.subs[0], WrapperNode):
             return f"d{self.subs[0]}"
         return f"d:{self.subs[0]}"
 
 
-class WrapV(Node):
+class WrapV(WrapperNode):
     def __init__(self, sub):
         assert sub.p.B
-        Node.__init__(self)
+        WrapperNode.__init__(self, sub)
 
-        self.subs = [sub]
         if sub._script[-1] == OP_CHECKSIG:
             self._script = [*sub._script[:-1], OP_CHECKSIGVERIFY]
         elif sub._script[-1] == OP_CHECKMULTISIG:
@@ -1121,131 +1007,79 @@ class WrapV(Node):
             self._script = [*sub._script, OP_VERIFY]
 
         self.p = Property("Vf" + "".join(c for c in "zon" if getattr(sub.p, c)))
-        self.needs_sig = sub.needs_sig
         self.is_forced = True  # V
         self.is_expressive = False  # V
-        self.is_nonmalleable = sub.is_nonmalleable
-        self.abs_heightlocks = sub.abs_heightlocks
-        self.rel_heightlocks = sub.rel_heightlocks
-        self.abs_timelocks = sub.abs_timelocks
-        self.rel_timelocks = sub.rel_timelocks
-        self.no_timelock_mix = not (
-            self.abs_heightlocks
-            and self.abs_timelocks
-            or self.rel_heightlocks
-            and self.rel_timelocks
-        )
         verify_cost = int(self._script[-1] == OP_VERIFY)
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=verify_cost)
-
-    def satisfy(self, sat_material):
-        return self.subs[0].satisfy(sat_material)
 
     def dissatisfy(self):
         return Satisfaction.unavailable()  # It's V.
 
     def __repr__(self):
         # Avoid duplicating colons
-        if is_wrapper(self.subs[0]):
+        if isinstance(self.subs[0], WrapperNode):
             return f"v{self.subs[0]}"
         return f"v:{self.subs[0]}"
 
 
-class WrapJ(Node):
+class WrapJ(WrapperNode):
     def __init__(self, sub):
         assert sub.p.has_all("Bn")
-        Node.__init__(self)
+        WrapperNode.__init__(self, sub)
 
-        self.subs = [sub]
         self._script = [OP_SIZE, OP_0NOTEQUAL, OP_IF, *sub._script, OP_ENDIF]
 
         self.p = Property("Bnd" + "".join(c for c in "ou" if getattr(sub.p, c)))
-        self.needs_sig = sub.needs_sig
         self.is_forced = False  # d
         self.is_expressive = sub.is_forced
-        self.is_nonmalleable = sub.is_nonmalleable
-        self.abs_heightlocks = sub.abs_heightlocks
-        self.rel_heightlocks = sub.rel_heightlocks
-        self.abs_timelocks = sub.abs_timelocks
-        self.rel_timelocks = sub.rel_timelocks
-        self.no_timelock_mix = not (
-            self.abs_heightlocks
-            and self.abs_timelocks
-            or self.rel_heightlocks
-            and self.rel_timelocks
-        )
         self.exec_info = ExecutionInfo.from_wrap_dissat(
             sub.exec_info, ops_count=4, dissat=1
         )
-
-    def satisfy(self, sat_material):
-        return self.subs[0].satisfy(sat_material)
 
     def dissatisfy(self):
         return Satisfaction(witness=[b""])
 
     def __repr__(self):
         # Avoid duplicating colons
-        if is_wrapper(self.subs[0]):
+        if isinstance(self.subs[0], WrapperNode):
             return f"j{self.subs[0]}"
         return f"j:{self.subs[0]}"
 
 
-class WrapN(Node):
+class WrapN(WrapperNode):
     def __init__(self, sub):
         assert sub.p.B
-        Node.__init__(self)
+        WrapperNode.__init__(self, sub)
 
-        self.subs = [sub]
         self._script = [*sub._script, OP_0NOTEQUAL]
 
         self.p = Property("Bu" + "".join(c for c in "zond" if getattr(sub.p, c)))
-        self.needs_sig = sub.needs_sig
-        self.is_forced = sub.is_forced
-        self.is_expressive = sub.is_expressive
-        self.is_nonmalleable = sub.is_nonmalleable
-        self.abs_heightlocks = sub.abs_heightlocks
-        self.rel_heightlocks = sub.rel_heightlocks
-        self.abs_timelocks = sub.abs_timelocks
-        self.rel_timelocks = sub.rel_timelocks
-        self.no_timelock_mix = not (
-            self.abs_heightlocks
-            and self.abs_timelocks
-            or self.rel_heightlocks
-            and self.rel_timelocks
-        )
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
-
-    def satisfy(self, sat_material):
-        return self.subs[0].satisfy(sat_material)
-
-    def dissatisfy(self):
-        return self.subs[0].dissatisfy()
 
     def __repr__(self):
         # Avoid duplicating colons
-        if is_wrapper(self.subs[0]):
+        if isinstance(self.subs[0], WrapperNode):
             return f"n{self.subs[0]}"
         return f"n:{self.subs[0]}"
 
 
-class WrapL(OrI):
+class WrapL(OrI, WrapperNode):
     def __init__(self, sub):
         OrI.__init__(self, Just0(), sub)
 
     def __repr__(self):
         # Avoid duplicating colons
-        if is_wrapper(self.subs[1]):
+        if isinstance(self.subs[0], WrapperNode):
             return f"l{self.subs[1]}"
         return f"l:{self.subs[1]}"
 
 
-class WrapU(OrI):
+class WrapU(OrI, WrapperNode):
     def __init__(self, sub):
         OrI.__init__(self, sub, Just0())
 
     def __repr__(self):
         # Avoid duplicating colons
-        if is_wrapper(self.subs[0]):
+        if isinstance(self.subs[0], WrapperNode):
             return f"u{self.subs[0]}"
         return f"u:{self.subs[0]}"
