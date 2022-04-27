@@ -1,22 +1,37 @@
-from miniscript.key import MiniscriptKey
+from miniscript.key import DescriptorKey
 from miniscript.miniscript.fragments import Node
-from miniscript.miniscript.script import CScript
 from miniscript.utils.hashes import sha256, hash160
+from miniscript.utils.script import (
+    CScript,
+    OP_DUP,
+    OP_HASH160,
+    OP_EQUALVERIFY,
+    OP_CHECKSIG,
+)
 
 from .checksum import descsum_create
+from .parsing import descriptor_from_str
 
 
 class Descriptor:
     """A Bitcoin Output Script Descriptor."""
 
-    def from_str():
-        raise NotImplementedError
+    def from_str(desc_str, strict=False):
+        """Parse a Bitcoin Output Script Descriptor from its string representation.
 
-    def from_script():
-        raise NotImplementedError
+        :param strict: whether to require the presence of a checksum.
+        """
+        return descriptor_from_str(desc_str, strict)
 
+    @property
     def script_pubkey(self):
         """Get the ScriptPubKey (output 'locking' Script) for this descriptor."""
+        # To be implemented by derived classes
+        raise NotImplementedError
+
+    @property
+    def script_sighash(self):
+        """Get the Script to be committed to by the signature hash of a spending transaction."""
         # To be implemented by derived classes
         raise NotImplementedError
 
@@ -30,6 +45,7 @@ class Descriptor:
         raise NotImplementedError
 
 
+# TODO: add methods to give access to all the Miniscript analysis
 class WshDescriptor(Descriptor):
     """A Segwit v0 P2WSH Output Script Descriptor."""
 
@@ -40,9 +56,14 @@ class WshDescriptor(Descriptor):
     def __repr__(self):
         return descsum_create(f"wsh({self.witness_script})")
 
+    @property
     def script_pubkey(self):
-        witness_program = sha256(self.witness_script)
+        witness_program = sha256(self.witness_script.script)
         return CScript([0, witness_program])
+
+    @property
+    def script_sighash(self):
+        return self.witness_script.script
 
     def satisfy(self, sat_material=None):
         """Get the witness stack to spend from this descriptor.
@@ -52,22 +73,28 @@ class WshDescriptor(Descriptor):
         """
         sat = self.witness_script.satisfy(sat_material)
         if sat is not None:
-            return sat + [self.witness_script]
+            return sat + [self.witness_script.script]
 
 
 class WpkhDescriptor(Descriptor):
     """A Segwit v0 P2WPKH Output Script Descriptor."""
 
     def __init__(self, pubkey):
-        assert isinstance(pubkey, MiniscriptKey)
+        assert isinstance(pubkey, DescriptorKey)
         self.pubkey = pubkey
 
     def __repr__(self):
         return descsum_create(f"wpkh({self.pubkey})")
 
+    @property
     def script_pubkey(self):
         witness_program = hash160(self.pubkey.bytes())
         return CScript([0, witness_program])
+
+    @property
+    def script_sighash(self):
+        key_hash = hash160(self.pubkey.bytes())
+        return CScript([OP_DUP, OP_HASH160, key_hash, OP_EQUALVERIFY, OP_CHECKSIG])
 
     def satisfy(self, signature):
         """Get the witness stack to spend from this descriptor.
@@ -75,4 +102,4 @@ class WpkhDescriptor(Descriptor):
         :param signature: a signature (in bytes) for the pubkey from the descriptor.
         """
         assert isinstance(signature, bytes)
-        return [signature, self.pubkey]
+        return [signature, self.pubkey.bytes()]

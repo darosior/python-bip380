@@ -53,10 +53,8 @@ def descsum_create(s):
     )
 
 
-def descsum_check(s, require=True):
+def descsum_check(s):
     """Verify that the checksum is correct in a descriptor"""
-    if not "#" in s:
-        return not require
     if s[-9] != "#":
         return False
     if not all(x in CHECKSUM_CHARSET for x in s[-8:]):
