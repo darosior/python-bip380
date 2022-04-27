@@ -3,6 +3,8 @@ from miniscript.miniscript.fragments import Node
 from miniscript.miniscript.script import CScript
 from miniscript.utils.hashes import sha256, hash160
 
+from .checksum import descsum_create
+
 
 class Descriptor:
     """A Bitcoin Output Script Descriptor."""
@@ -36,8 +38,7 @@ class WshDescriptor(Descriptor):
         self.witness_script = witness_script
 
     def __repr__(self):
-        # FIXME: checksum
-        return f"wsh({self.witness_script})"
+        return descsum_create(f"wsh({self.witness_script})")
 
     def script_pubkey(self):
         witness_program = sha256(self.witness_script)
@@ -62,8 +63,7 @@ class WpkhDescriptor(Descriptor):
         self.pubkey = pubkey
 
     def __repr__(self):
-        # FIXME: checksum
-        return f"wpkh({self.pubkey})"
+        return descsum_create(f"wpkh({self.pubkey})")
 
     def script_pubkey(self):
         witness_program = hash160(self.pubkey.bytes())
