@@ -195,3 +195,29 @@ def test_descriptor_parsing():
         Descriptor.from_str(
             "wpkh([00aabbcc/0]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)#2h49p5pp"
         )
+
+    # Deriving a raw key is a no-op
+    desc_str = (
+        "wpkh(033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)"
+    )
+    desc, desc2 = Descriptor.from_str(desc_str), Descriptor.from_str(desc_str)
+    desc2.derive(10)
+    assert str(desc2) == str(desc)
+
+    # Deriving a raw key is a no-op, even if it has an origin
+    desc_str = "wpkh([00aabbcc/0]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)"
+    desc, desc2 = Descriptor.from_str(desc_str), Descriptor.from_str(desc_str)
+    desc2.derive(10)
+    assert str(desc2) == str(desc)
+
+    # Deriving an xpub will derive it
+    desc_str = (
+        "wsh(pkh(xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa))"
+    )
+    desc, desc2 = Descriptor.from_str(desc_str), Descriptor.from_str(desc_str)
+    desc2.derive(1001)
+    assert desc2.keys[0].origin.path == [1001]
+    assert (
+        str(desc2).split("#")[0].split("]")[1]
+        == "xpub68Raazrdpq1a2PhmuPMr59H5eT3axiWPVnbN6t6xJj5YvWRTJhdJr2V9ye7v4VG3yKaPb4qbW2zrHsEHCAzMSUskzNvksL4vtG7DGv12Nj6))"
+    )

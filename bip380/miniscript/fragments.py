@@ -247,7 +247,7 @@ class Pk(PkNode):
         return Satisfaction(witness=[b""])
 
     def __repr__(self):
-        return f"pk_k({self.pubkey.bytes().hex()})"
+        return f"pk_k({self.pubkey})"
 
 
 class Pkh(PkNode):
@@ -270,7 +270,7 @@ class Pkh(PkNode):
         return Satisfaction(witness=[b"", self.pubkey.bytes()])
 
     def __repr__(self):
-        return f"pk_h({self.pubkey.bytes().hex()})"
+        return f"pk_h({self.pubkey})"
 
     def pk_hash(self):
         assert isinstance(self.pubkey, DescriptorKey)
@@ -452,9 +452,7 @@ class Multi(Node):
         return Satisfaction(witness=[b""] * (self.k + 1))
 
     def __repr__(self):
-        return (
-            f"multi({','.join([str(self.k)] + [str(k) for k in self.keys])})"
-        )
+        return f"multi({','.join([str(self.k)] + [str(k) for k in self.keys])})"
 
 
 class AndV(Node):
@@ -915,6 +913,14 @@ class WrapperNode(Node):
         # Most wrappers are satisfied this way, for special cases it's overriden.
         return self.subs[0].dissatisfaction()
 
+    def skip_colon(self):
+        # We need to check this because of the pk() and pkh() aliases.
+        if isinstance(self.subs[0], WrapC) and isinstance(
+            self.subs[0].subs[0], (Pk, Pkh)
+        ):
+            return False
+        return isinstance(self.subs[0], WrapperNode)
+
 
 class WrapA(WrapperNode):
     def __init__(self, sub):
@@ -928,7 +934,7 @@ class WrapA(WrapperNode):
 
     def __repr__(self):
         # Don't duplicate colons
-        if isinstance(self.subs[0], WrapperNode):
+        if self.skip_colon():
             return f"a{self.subs[0]}"
         return f"a:{self.subs[0]}"
 
@@ -945,7 +951,7 @@ class WrapS(WrapperNode):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if isinstance(self.subs[0], WrapperNode):
+        if self.skip_colon():
             return f"s{self.subs[0]}"
         return f"s:{self.subs[0]}"
 
@@ -965,8 +971,13 @@ class WrapC(WrapperNode):
         )
 
     def __repr__(self):
+        # Special case of aliases
+        if isinstance(self.subs[0], Pk):
+            return f"pk({self.subs[0].pubkey})"
+        if isinstance(self.subs[0], Pkh):
+            return f"pkh({self.subs[0].pubkey})"
         # Avoid duplicating colons
-        if isinstance(self.subs[0], WrapperNode):
+        if self.skip_colon():
             return f"c{self.subs[0]}"
         return f"c:{self.subs[0]}"
 
@@ -980,7 +991,7 @@ class WrapT(AndV, WrapperNode):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if isinstance(self.subs[0], WrapperNode):
+        if self.skip_colon():
             return f"t{self.subs[0]}"
         return f"t:{self.subs[0]}"
 
@@ -1007,7 +1018,7 @@ class WrapD(WrapperNode):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if isinstance(self.subs[0], WrapperNode):
+        if self.skip_colon():
             return f"d{self.subs[0]}"
         return f"d:{self.subs[0]}"
 
@@ -1037,7 +1048,7 @@ class WrapV(WrapperNode):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if isinstance(self.subs[0], WrapperNode):
+        if self.skip_colon():
             return f"v{self.subs[0]}"
         return f"v:{self.subs[0]}"
 
@@ -1061,7 +1072,7 @@ class WrapJ(WrapperNode):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if isinstance(self.subs[0], WrapperNode):
+        if self.skip_colon():
             return f"j{self.subs[0]}"
         return f"j:{self.subs[0]}"
 
@@ -1078,7 +1089,7 @@ class WrapN(WrapperNode):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if isinstance(self.subs[0], WrapperNode):
+        if self.skip_colon():
             return f"n{self.subs[0]}"
         return f"n:{self.subs[0]}"
 
@@ -1089,7 +1100,7 @@ class WrapL(OrI, WrapperNode):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if isinstance(self.subs[0], WrapperNode):
+        if self.skip_colon():
             return f"l{self.subs[1]}"
         return f"l:{self.subs[1]}"
 
@@ -1100,6 +1111,6 @@ class WrapU(OrI, WrapperNode):
 
     def __repr__(self):
         # Avoid duplicating colons
-        if isinstance(self.subs[0], WrapperNode):
+        if self.skip_colon():
             return f"u{self.subs[0]}"
         return f"u:{self.subs[0]}"

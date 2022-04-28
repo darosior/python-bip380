@@ -1,5 +1,6 @@
 from bip32 import BIP32
 from bip32.utils import coincurve, _deriv_path_str_to_list
+from bip380.utils.hashes import hash160
 
 
 class DescriptorKeyError(Exception):
@@ -53,10 +54,10 @@ class DescriptorKey:
     May be an extended or raw public key.
     """
 
-    # Information about the origin of this key.
-    origin: None
-
     def __init__(self, key):
+        # Information about the origin of this key.
+        self.origin = None
+
         if isinstance(key, bytes):
             if len(key) != 33:
                 raise DescriptorKeyError("Only compressed keys are supported")
@@ -79,6 +80,7 @@ class DescriptorKey:
                     self.key = coincurve.PublicKey(bytes.fromhex(key))
                 except ValueError as e:
                     raise DescriptorKeyError(f"Public key parsing error: '{str(e)}'")
+
             else:
                 try:
                     self.key = BIP32.from_xpub(key)
@@ -90,9 +92,40 @@ class DescriptorKey:
                 "Invalid parameter type: expecting bytes, hex str or BIP32 instance."
             )
 
+    def __repr__(self):
+        key = ""
+
+        if self.origin is not None:
+            key += f"[{self.origin.fingerprint.hex()}"
+            for index in self.origin.path:
+                key += f"/{index}"
+            key += "]"
+
+        if isinstance(self.key, BIP32):
+            key += self.key.get_xpub()
+        else:
+            assert isinstance(self.key, coincurve.PublicKey)
+            key += self.key.format().hex()
+
+        return key
+
     def bytes(self):
         if isinstance(self.key, coincurve.PublicKey):
             return self.key.format()
         else:
             assert isinstance(self.key, BIP32)
-            return self.key.get_pubkey_from_path("m")
+            return self.key.pubkey
+
+    def derive(self, index):
+        """Derive the key at the given path. A no-op if the key isn't derive-able."""
+        assert isinstance(index, int)
+        if isinstance(self.key, coincurve.PublicKey):
+            return
+        assert isinstance(self.key, BIP32)
+        print(self.key.get_xpub_from_path([index]))
+        self.key = BIP32.from_xpub(self.key.get_xpub_from_path([index]))
+        if self.origin is None:
+            fingerprint = hash160(self.key.pubkey)[:4]
+            self.origin = DescriporKeyOrigin(fingerprint, [index])
+        else:
+            self.origin.path.append(index)

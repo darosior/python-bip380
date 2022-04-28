@@ -41,6 +41,12 @@ class Descriptor:
         # To be implemented by derived classes
         raise NotImplementedError
 
+    def derive(self, index):
+        """Derive all the keys of the descriptor at the given derivation index."""
+        assert isinstance(index, int)
+        for key in self.keys:
+            key.derive(index)
+
     def satisfy(self, *args, **kwargs):
         """Get the witness stack to spend from this descriptor.
 
