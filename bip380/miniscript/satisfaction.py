@@ -28,7 +28,15 @@ def max_optional(a, b):
 class SatisfactionMaterial:
     """Data that may be needed in order to satisfy a Minsicript fragment."""
 
-    def __init__(self, preimages={}, signatures={}, max_sequence=0, max_lock_time=0):
+    def __init__(
+        self, preimages={}, signatures={}, max_sequence=2 ** 32, max_lock_time=2 ** 32
+    ):
+        """
+        :param preimages: Mapping from a hash (as bytes), to its 32-bytes preimage.
+        :param signatures: Mapping from a public key (as bytes), to a signature for this key.
+        :param max_sequence: The maximum relative timelock possible (coin age).
+        :param max_lock_time: The maximum absolute timelock possible (block height).
+        """
         self.preimages = preimages
         self.signatures = signatures
         self.max_sequence = max_sequence

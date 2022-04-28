@@ -1,5 +1,5 @@
 from bip380.key import DescriptorKey
-from bip380.miniscript.fragments import Node
+from bip380.miniscript import Node
 from bip380.utils.hashes import sha256, hash160
 from bip380.utils.script import (
     CScript,

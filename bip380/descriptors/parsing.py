@@ -1,8 +1,8 @@
 import bip380.descriptors as descriptors
 
 from bip380.key import DescriptorKey, DescriptorKeyError
+from bip380.miniscript import Node
 from bip380.descriptors.checksum import descsum_check
-from bip380.miniscript.fragments import Node
 
 from .errors import DescriptorParsingError
 

@@ -22,8 +22,7 @@ from bitcointx.core.script import (
 )
 from itertools import chain
 from bip380.key import DescriptorKey
-from bip380.miniscript import fragments
-from bip380.miniscript.satisfaction import SatisfactionMaterial
+from bip380.miniscript import fragments, SatisfactionMaterial
 from bip380.utils.script import CScript
 
 

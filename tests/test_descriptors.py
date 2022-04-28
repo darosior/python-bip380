@@ -19,7 +19,7 @@ from bitcointx.core.script import (
     SIGVERSION_WITNESS_V0,
 )
 from bip380.descriptors import Descriptor
-from bip380.miniscript.satisfaction import SatisfactionMaterial
+from bip380.miniscript import SatisfactionMaterial
 from bip380.utils.hashes import sha256
 
 
