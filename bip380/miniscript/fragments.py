@@ -110,6 +110,12 @@ class Node:
     def script(self):
         return CScript(self._script)
 
+    @property
+    def keys(self):
+        """Get the list of all keys from this Miniscript, in order of apparition."""
+        # Overriden by fragments that actually have keys.
+        return [key for sub in self.subs for key in sub.keys]
+
     def satisfy(self, sat_material):
         """Get the witness of the smallest non-malleable satisfaction for this fragment,
         if one exists.
@@ -216,6 +222,10 @@ class PkNode(Node):
         self.rel_timelocks = False
         self.no_timelock_mix = True
 
+    @property
+    def keys(self):
+        return [self.pubkey]
+
 
 # TODO: A PkNode class to inherit those two from?
 class Pk(PkNode):
@@ -240,7 +250,7 @@ class Pk(PkNode):
         return f"pk_k({self.pubkey.bytes().hex()})"
 
 
-class Pkh(Node):
+class Pkh(PkNode):
     # FIXME: should we support a hash here, like rust-bitcoin? I don't think it's safe.
     def __init__(self, pubkey):
         PkNode.__init__(self, pubkey)
@@ -406,7 +416,7 @@ class Multi(Node):
         assert all(isinstance(k, DescriptorKey) for k in keys)
 
         self.k = k
-        self.keys = keys
+        self.pubkeys = keys
         self._script = [k, *[k.bytes() for k in keys], len(keys), OP_CHECKMULTISIG]
 
         self.p = Property("Bndu")
@@ -420,6 +430,10 @@ class Multi(Node):
         self.rel_timelocks = False
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(1, len(keys), 1 + k, 1 + k)
+
+    @property
+    def keys(self):
+        return self.pubkeys
 
     def satisfaction(self, sat_material):
         sigs = []
@@ -439,7 +453,7 @@ class Multi(Node):
 
     def __repr__(self):
         return (
-            f"multi({','.join([str(self.k)] + [k.bytes().hex() for k in self.keys])})"
+            f"multi({','.join([str(self.k)] + [str(k) for k in self.keys])})"
         )
 
 

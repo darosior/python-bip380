@@ -35,6 +35,12 @@ class Descriptor:
         # To be implemented by derived classes
         raise NotImplementedError
 
+    @property
+    def keys(self):
+        """Get the list of all keys from this descriptor, in order of apparition."""
+        # To be implemented by derived classes
+        raise NotImplementedError
+
     def satisfy(self, *args, **kwargs):
         """Get the witness stack to spend from this descriptor.
 
@@ -64,6 +70,10 @@ class WshDescriptor(Descriptor):
     @property
     def script_sighash(self):
         return self.witness_script.script
+
+    @property
+    def keys(self):
+        return self.witness_script.keys
 
     def satisfy(self, sat_material=None):
         """Get the witness stack to spend from this descriptor.
@@ -95,6 +105,10 @@ class WpkhDescriptor(Descriptor):
     def script_sighash(self):
         key_hash = hash160(self.pubkey.bytes())
         return CScript([OP_DUP, OP_HASH160, key_hash, OP_EQUALVERIFY, OP_CHECKSIG])
+
+    @property
+    def keys(self):
+        return [self.pubkey]
 
     def satisfy(self, signature):
         """Get the witness stack to spend from this descriptor.

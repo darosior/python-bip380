@@ -1,5 +1,6 @@
 import coincurve
 import os
+import pytest
 
 from bip32 import BIP32
 from bitcointx.core import (
@@ -20,6 +21,7 @@ from bitcointx.core.script import (
 )
 from bip380.descriptors import Descriptor
 from bip380.miniscript import SatisfactionMaterial
+from bip380.descriptors.errors import DescriptorParsingError
 from bip380.utils.hashes import sha256
 
 
@@ -95,3 +97,101 @@ def test_wpkh_sanity_checks():
     tx, signatures, amount = sign_dummy_tx(desc, keypairs={pubkey: privkey})
     stack = desc.satisfy(list(signatures.values())[0])
     verify_tx(desc, tx, stack, amount)
+
+
+def test_descriptor_parsing():
+    """Misc descriptor parsing checks."""
+    # Without origin
+    Descriptor.from_str(
+        "wpkh(033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)"
+    )
+    Descriptor.from_str(
+        "wpkh(xpub6BsJ4SAX3CYhcZVV9bFVvmGJ7cyboy4LJqbRJJEziPvm9Pq7v7cWkBAa1LixG9vJybxHDuWcHTtq3K4tsaKG1jMJcpZmkiacFuc7LkzUCWu)"
+    )
+    Descriptor.from_str(
+        "wsh(pkh(033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a))"
+    )
+    Descriptor.from_str(
+        "wsh(pkh(xpub6BsJ4SAX3CYhcZVV9bFVvmGJ7cyboy4LJqbRJJEziPvm9Pq7v7cWkBAa1LixG9vJybxHDuWcHTtq3K4tsaKG1jMJcpZmkiacFuc7LkzUCWu))"
+    )
+
+    # With origin, only fingerprint
+    Descriptor.from_str(
+        "wpkh([00aabbcc]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)"
+    )
+    Descriptor.from_str(
+        "wpkh([00aabbcc]xpub6BsJ4SAX3CYhcZVV9bFVvmGJ7cyboy4LJqbRJJEziPvm9Pq7v7cWkBAa1LixG9vJybxHDuWcHTtq3K4tsaKG1jMJcpZmkiacFuc7LkzUCWu)"
+    )
+    Descriptor.from_str(
+        "wsh(pkh([00aabbcc]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a))"
+    )
+    Descriptor.from_str(
+        "wsh(pkh([00aabbcc]xpub6BsJ4SAX3CYhcZVV9bFVvmGJ7cyboy4LJqbRJJEziPvm9Pq7v7cWkBAa1LixG9vJybxHDuWcHTtq3K4tsaKG1jMJcpZmkiacFuc7LkzUCWu))"
+    )
+
+    # With origin, fingerprint + various derivation paths
+    desc = Descriptor.from_str(
+        "wpkh([00aabbcc/0]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)"
+    )
+    assert desc.keys[0].origin.fingerprint == bytes.fromhex("00aabbcc") and desc.keys[
+        0
+    ].origin.path == [0]
+    desc = Descriptor.from_str(
+        "wpkh([00aabbcc/0/1']xpub6BsJ4SAX3CYhcZVV9bFVvmGJ7cyboy4LJqbRJJEziPvm9Pq7v7cWkBAa1LixG9vJybxHDuWcHTtq3K4tsaKG1jMJcpZmkiacFuc7LkzUCWu)"
+    )
+    assert desc.keys[0].origin.fingerprint == bytes.fromhex("00aabbcc") and desc.keys[
+        0
+    ].origin.path == [0, 2 ** 31 + 1]
+    desc = Descriptor.from_str(
+        "wsh(pkh([00aabbcc/0h/1]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a))"
+    )
+    assert desc.keys[0].origin.fingerprint == bytes.fromhex("00aabbcc") and desc.keys[
+        0
+    ].origin.path == [2 ** 31, 1]
+    desc = Descriptor.from_str(
+        "wsh(pkh([00aabbcc/108765H/578h/9897'/23]xpub6BsJ4SAX3CYhcZVV9bFVvmGJ7cyboy4LJqbRJJEziPvm9Pq7v7cWkBAa1LixG9vJybxHDuWcHTtq3K4tsaKG1jMJcpZmkiacFuc7LkzUCWu))"
+    )
+    assert desc.keys[0].origin.fingerprint == bytes.fromhex("00aabbcc") and desc.keys[
+        0
+    ].origin.path == [2 ** 31 + 108765, 2 ** 31 + 578, 2 ** 31 + 9897, 23]
+
+    # With checksum
+    Descriptor.from_str(
+        "wpkh([00aabbcc/0]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)#g6gm8u7v"
+    )
+    Descriptor.from_str(
+        "wpkh([00aabbcc/1]xpub6BsJ4SAX3CYhcZVV9bFVvmGJ7cyboy4LJqbRJJEziPvm9Pq7v7cWkBAa1LixG9vJybxHDuWcHTtq3K4tsaKG1jMJcpZmkiacFuc7LkzUCWu)#2h49p59p"
+    )
+    Descriptor.from_str(
+        "wsh(pkh([00aabbcc/2]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a))#nue4wg6d"
+    )
+    Descriptor.from_str(
+        "wsh(pkh([00aabbcc/3]xpub6BsJ4SAX3CYhcZVV9bFVvmGJ7cyboy4LJqbRJJEziPvm9Pq7v7cWkBAa1LixG9vJybxHDuWcHTtq3K4tsaKG1jMJcpZmkiacFuc7LkzUCWu))#zv3q322g"
+    )
+
+    # Multiple origins
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "wpkh([00aabbcc/0][00aabbcc/0]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)"
+        )
+    # Too long fingerprint
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "wpkh([00aabbccd/0]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)"
+        )
+    # Insane deriv path
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "wpkh([00aabbcc/0//]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)"
+        )
+    # Absent checksum while required
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "wpkh([00aabbcc/0]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)",
+            strict=True,
+        )
+    # Invalid checksum
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "wpkh([00aabbcc/0]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a)#2h49p5pp"
+        )

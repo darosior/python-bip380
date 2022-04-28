@@ -658,12 +658,10 @@ def parse_one(string):
             return fragments.Pk(params[0]), remaining
 
         if tag == "pkh":
-            keyhash = bytes.fromhex(params[0])
-            return fragments.WrapC(fragments.Pkh(keyhash)), remaining
+            return fragments.WrapC(fragments.Pkh(params[0])), remaining
 
         if tag == "pk_h":
-            keyhash_b = bytes.fromhex(params[0])
-            return fragments.Pkh(keyhash_b), remaining
+            return fragments.Pkh(params[0]), remaining
 
         if tag == "older":
             value = int(params[0])
