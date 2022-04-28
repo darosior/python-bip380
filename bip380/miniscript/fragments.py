@@ -6,11 +6,11 @@ See the Miniscript website for the specification of the type system: https://bit
 """
 
 import copy
-import miniscript.miniscript.parsing as parsing
+import bip380.miniscript.parsing as parsing
 
-from miniscript.key import DescriptorKey
-from miniscript.utils.hashes import hash160
-from miniscript.utils.script import (
+from bip380.key import DescriptorKey
+from bip380.utils.hashes import hash160
+from bip380.utils.script import (
     CScript,
     OP_1,
     OP_0,

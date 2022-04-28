@@ -18,9 +18,9 @@ from bitcointx.core.script import (
     RawBitcoinSignatureHash,
     SIGVERSION_WITNESS_V0,
 )
-from miniscript.descriptors import Descriptor
-from miniscript.miniscript.satisfaction import SatisfactionMaterial
-from miniscript.utils.hashes import sha256
+from bip380.descriptors import Descriptor
+from bip380.miniscript.satisfaction import SatisfactionMaterial
+from bip380.utils.hashes import sha256
 
 
 def sign_dummy_tx(

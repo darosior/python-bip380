@@ -21,10 +21,10 @@ from bitcointx.core.script import (
     SIGVERSION_WITNESS_V0,
 )
 from itertools import chain
-from miniscript.key import DescriptorKey
-from miniscript.miniscript import fragments
-from miniscript.miniscript.satisfaction import SatisfactionMaterial
-from miniscript.utils.script import CScript
+from bip380.key import DescriptorKey
+from bip380.miniscript import fragments
+from bip380.miniscript.satisfaction import SatisfactionMaterial
+from bip380.utils.script import CScript
 
 
 def dummy_pk():

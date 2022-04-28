@@ -1,8 +1,8 @@
-import miniscript.descriptors as descriptors
+import bip380.descriptors as descriptors
 
-from miniscript.key import DescriptorKey, DescriptorKeyError
-from miniscript.descriptors.checksum import descsum_check
-from miniscript.miniscript.fragments import Node
+from bip380.key import DescriptorKey, DescriptorKeyError
+from bip380.descriptors.checksum import descsum_check
+from bip380.miniscript.fragments import Node
 
 from .errors import DescriptorParsingError
 

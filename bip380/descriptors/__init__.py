@@ -1,7 +1,7 @@
-from miniscript.key import DescriptorKey
-from miniscript.miniscript.fragments import Node
-from miniscript.utils.hashes import sha256, hash160
-from miniscript.utils.script import (
+from bip380.key import DescriptorKey
+from bip380.miniscript.fragments import Node
+from bip380.utils.hashes import sha256, hash160
+from bip380.utils.script import (
     CScript,
     OP_DUP,
     OP_HASH160,
