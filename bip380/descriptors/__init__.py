@@ -42,7 +42,11 @@ class Descriptor:
         raise NotImplementedError
 
     def derive(self, index):
-        """Derive all the keys of the descriptor at the given derivation index."""
+        """Derive the key at the given derivation index.
+
+        A no-op if the key isn't a wildcard. Will start from 2**31 if the key is a "hardened
+        wildcard".
+        """
         assert isinstance(index, int)
         for key in self.keys:
             key.derive(index)
