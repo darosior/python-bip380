@@ -892,7 +892,7 @@ class Thresh(Node):
                 self.no_timelock_mix &= sub.no_timelock_mix
 
         self.p = Property(
-            "B" + ("z" if all_z else "") + ("o" if all_z_but_one_odu else "")
+            "Bdu" + ("z" if all_z else "") + ("o" if all_z_but_one_odu else "")
         )
         self.needs_sig = s_count >= n - k
         self.is_forced = False  # All subs need to be 'd'

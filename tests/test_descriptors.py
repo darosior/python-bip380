@@ -284,3 +284,7 @@ def test_descriptor_parsing():
     assert desc.script_pubkey != Descriptor.from_str(desc_str).script_pubkey
     assert desc.script_pubkey.hex() == "002076fb586cb821ac94fbe094e012b93d82cc42925bcf543415416f42aa3ba1822c"
     assert desc.witness_script.script.hex() == "552102de76d54f7e28d731f403f5d1fad4da1df208e1d6e00dbe6dfbadd804461c27432102f65c2812d2a8d1da479d0cf32d4ca717263bcdadd4b3f11a014b8cc27f73ec4421024bf97e1bfc4b5c1de90172d50d92fe072da40a8ccd0f89cd5e858b9dc122662321023bdc599713ea7b982dc3f439aad24f6c6c8b1a4617f339ba976a48d9067a7d67210245cca25b3ecea1a82157bc98b9c35caa53d0f65b9ecb5bfdbb80749d22357c4555ae"
+
+    # An Unvault descriptor from Revault
+    desc_str = "wsh(andor(thresh(1,pk(tpubD6NzVbkrYhZ4Wu1wWF6gEL8tAZvATeGodn1ymPeC3eo9XGdj6fats9QdMG88KZ23FjV4SyTn5LAHLLwRmor4n6yWBH5ccJLnj7LWcuyPuDQ/*)),and_v(v:multi(2,0227cb9432f93edc3ba82ca70c75bda335553a999e6ab885bc337fcb837aa18f4a,02ed00f0a17f220c7b2179ab9610ea2cccaf290c0f726ce472ab959b2528d2b9de),older(9990)),thresh(2,pkh(tpubD6NzVbkrYhZ4Y1KSo5w1yFPreF7THiygs775SRLyMKJZ8ACgtkLJPNb9UiDk4L4MJuYPsdViWfY65tteiub51YZtqjjv6kLKdKH5WSdH7Br/*),a:pkh(tpubD6NzVbkrYhZ4Xhspiqm3eot2TddA2XmcPmqHyRftxFaKkZWuePH4RXw3Af6CpPfnhRBKPjz7TveUGi91EXTph5V7qHYJ4ijG3NtCjrCKPRH/*))))#se46h9uw"
+    Descriptor.from_str(desc_str)
