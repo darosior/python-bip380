@@ -20,7 +20,7 @@ from bitcointx.core.script import (
     SIGVERSION_WITNESS_V0,
 )
 from bip380.descriptors import Descriptor
-from bip380.key import KeyPathKind
+from bip380.key import DescriptorKey, KeyPathKind
 from bip380.miniscript import SatisfactionMaterial
 from bip380.descriptors.errors import DescriptorParsingError
 from bip380.utils.hashes import sha256
@@ -98,6 +98,19 @@ def test_wpkh_sanity_checks():
     tx, signatures, amount = sign_dummy_tx(desc, keypairs={pubkey: privkey})
     stack = desc.satisfy(list(signatures.values())[0])
     verify_tx(desc, tx, stack, amount)
+
+
+def test_xpub_parsing():
+    """Roundtrip xpubs with various metadata."""
+    xpubs = [
+        "[aabbccdd]xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa",
+        "[aabbccdd/0/1'/2]xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa",
+        "xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/1'/2",
+        "xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/145/*",
+        "[aabbccdd/0/1'/2]xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/1'/2/*",
+    ]
+    for xpub in xpubs:
+        assert str(DescriptorKey(xpub)) == xpub
 
 
 def test_descriptor_parsing():

@@ -55,7 +55,7 @@ class KeyPathKind(Enum):
     WILDCARD_HARDENED = auto()
 
     def is_wildcard(self):
-        return self in [WILDCARD_HARDENED, WILDCARD_UNHARDENED]
+        return self in [KeyPathKind.WILDCARD_HARDENED, KeyPathKind.WILDCARD_UNHARDENED]
 
 
 class DescriptorKeyPath:
@@ -81,7 +81,7 @@ class DescriptorKeyPath:
         if path_str[-2:] in ["*'", "*h", "*H"]:
             kind = KeyPathKind.WILDCARD_HARDENED
             path_str = path_str[:-2]
-        elif path_str[-1:] in ["*", "*", "*"]:
+        elif path_str[-1] == "*":
             kind = KeyPathKind.WILDCARD_UNHARDENED
             path_str = path_str[:-1]
 
@@ -89,8 +89,11 @@ class DescriptorKeyPath:
         # The helper operates on "m/10h/11/12'/13", so give it a "m/".
         if len(path_str) > 1:
             dummy = "m/"
+            # If we just trimmed the wildcard part, time the trailing '/' too.
+            if kind.is_wildcard():
+                path_str = path_str[:-1]
             try:
-                path = _deriv_path_str_to_list(dummy + path_str[:-1])
+                path = _deriv_path_str_to_list(dummy + path_str)
             except ValueError:
                 raise DescriptorKeyError(f"Insane path in key path: '{path_str}'")
         else:
@@ -156,10 +159,17 @@ class DescriptorKey:
     def __repr__(self):
         key = ""
 
+        def ser_path(key, path):
+            for i in path:
+                if i < 2**31:
+                    key += f"/{i}"
+                else:
+                    key += f"/{i - 2**31}'"
+            return key
+
         if self.origin is not None:
             key += f"[{self.origin.fingerprint.hex()}"
-            for index in self.origin.path:
-                key += f"/{index}"
+            key = ser_path(key, self.origin.path)
             key += "]"
 
         if isinstance(self.key, BIP32):
@@ -167,6 +177,11 @@ class DescriptorKey:
         else:
             assert isinstance(self.key, coincurve.PublicKey)
             key += self.key.format().hex()
+
+        if self.path is not None:
+            key = ser_path(key, self.path.path)
+            if self.path.kind.is_wildcard():
+                key += "/*"
 
         return key
 
@@ -192,11 +207,14 @@ class DescriptorKey:
         assert isinstance(self.key, BIP32)
 
         if self.path.kind == KeyPathKind.WILDCARD_HARDENED:
-            index += 2**31
-        assert index <= 2**32
+            index += 2 ** 31
+        assert index <= 2 ** 32
 
         # TODO(bip32): have a way to derive without roundtripping through string ser.
-        self.key = BIP32.from_xpub(self.key.get_xpub_from_path(self.path.path + [index]))
+        self.key = BIP32.from_xpub(
+            self.key.get_xpub_from_path(self.path.path + [index])
+        )
+        self.path = None
         if self.origin is None:
             fingerprint = hash160(self.key.pubkey)[:4]
             self.origin = DescriporKeyOrigin(fingerprint, [index])
