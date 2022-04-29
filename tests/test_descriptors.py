@@ -264,3 +264,15 @@ def test_descriptor_parsing():
     desc, desc2 = Descriptor.from_str(desc_str), Descriptor.from_str(desc_str)
     desc2.derive(1001)
     assert str(desc2) == str(desc)
+
+    # Test against a Revault deposit descriptor using rust-miniscript
+    xpub = BIP32.from_xpub("tpubD6NzVbkrYhZ4YgUwLbJjHAo4khrBPHJfZ1nzeeWxaTpYHzvM7SaEFLnuWjcRt8aM3LicBzeqVcN4fKsbTzHSkUJn388HSc5Xxpd1tPSmDYQ")
+    assert xpub.get_pubkey_from_path([0]).hex() == "02cc24adfed5a481b000192042b2399087437d8eb16095c3dda1d45a4fbf868017"
+    desc_str = "wsh(multi(5,tpubD6NzVbkrYhZ4YgUwLbJjHAo4khrBPHJfZ1nzeeWxaTpYHzvM7SaEFLnuWjcRt8aM3LicBzeqVcN4fKsbTzHSkUJn388HSc5Xxpd1tPSmDYQ/*,tpubD6NzVbkrYhZ4X9w1pgeFqiDm7o4dkvEku1ibW6frK5n3vWsSGjxoo3DESgwwZW5N8eN72vCywJzmbezhQQHMbpUytZcxYYTAEaQzUntBEtP/*,tpubD6NzVbkrYhZ4X2M619JZbwnPoQ65e5qzosWPtXYMnMtevcQTwVHq6HFbu5whCAp4PpynzrE65MXk2kgqUb22aE2V5NPZJautw8vXDmVMGuz/*,tpubD6NzVbkrYhZ4YNHo23GAaYnfs8xzyhxpaWZsHJ72a9RPwiQd36BtyHnpRSQFYAJMLK2tWb6i7QJcjNuko4b4V3kGyhe6Z4TxZGXJfEvTU12/*,tpubD6NzVbkrYhZ4YdMUbJuBi6mhtYAC53MevdrFtpQicPavbnYDni6YsAD62NUhQxHYYJpAniVk4Ba9Q2GiptSZPz8ugbo3zgecm2aXQRFny4a/*))#339j7vh3"
+    rust_bitcoin_desc_str = "wsh(multi(5,[7fba6fe6/0]02cc24adfed5a481b000192042b2399087437d8eb16095c3dda1d45a4fbf868017,[d7724f76/0]039b2b68caf451ba88afe617cb57f2e9840511bedb0ac8ffa2dc2b25d4ea84adf1,[0c39ed43/0]03f7c1d37ff5dfd5a8b5326533810cef71f7f724fd53d2a88f49e3c63edc5f9688,[e69af179/0]0296209843f0f4dd7b1f3a072e72e7b4edd2e3ff416afc862a7a7aa0b9d40d2de6,[e42852b6/0]03427930b60ba45aeb5c7e03fc3b6b7b22637bec5d355c55204678d7dd8a029981))#vatx0fxr"
+    desc = Descriptor.from_str(desc_str)
+    desc.derive(0)
+    # In the string representation they would use raw keys. Do the same for asserting.
+    for key in desc.keys:
+        key.key = coincurve.PublicKey(key.key.pubkey)
+    assert str(desc) == str(rust_bitcoin_desc_str)

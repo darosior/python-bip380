@@ -210,13 +210,13 @@ class DescriptorKey:
             index += 2 ** 31
         assert index <= 2 ** 32
 
-        # TODO(bip32): have a way to derive without roundtripping through string ser.
-        self.key = BIP32.from_xpub(
-            self.key.get_xpub_from_path(self.path.path + [index])
-        )
-        self.path = None
         if self.origin is None:
             fingerprint = hash160(self.key.pubkey)[:4]
             self.origin = DescriporKeyOrigin(fingerprint, [index])
         else:
             self.origin.path.append(index)
+        # TODO(bip32): have a way to derive without roundtripping through string ser.
+        self.key = BIP32.from_xpub(
+            self.key.get_xpub_from_path(self.path.path + [index])
+        )
+        self.path = None
