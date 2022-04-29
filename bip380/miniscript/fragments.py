@@ -232,10 +232,12 @@ class Pk(PkNode):
     def __init__(self, pubkey):
         PkNode.__init__(self, pubkey)
 
-        self._script = [self.pubkey.bytes()]
-
         self.p = Property("Konud")
         self.exec_info = ExecutionInfo(0, 0, 0, 0)
+
+    @property
+    def _script(self):
+        return [self.pubkey.bytes()]
 
     def satisfaction(self, sat_material):
         sig = sat_material.signatures.get(self.pubkey.bytes())
@@ -255,10 +257,12 @@ class Pkh(PkNode):
     def __init__(self, pubkey):
         PkNode.__init__(self, pubkey)
 
-        self._script = [OP_DUP, OP_HASH160, self.pk_hash(), OP_EQUALVERIFY]
-
         self.p = Property("Knud")
         self.exec_info = ExecutionInfo(3, 0, 1, 1)
+
+    @property
+    def _script(self):
+        return [OP_DUP, OP_HASH160, self.pk_hash(), OP_EQUALVERIFY]
 
     def satisfaction(self, sat_material):
         sig = sat_material.signatures.get(self.pubkey.bytes())
@@ -417,7 +421,6 @@ class Multi(Node):
 
         self.k = k
         self.pubkeys = keys
-        self._script = [k, *[k.bytes() for k in keys], len(keys), OP_CHECKMULTISIG]
 
         self.p = Property("Bndu")
         self.needs_sig = True
@@ -434,6 +437,15 @@ class Multi(Node):
     @property
     def keys(self):
         return self.pubkeys
+
+    @property
+    def _script(self):
+        return [
+            self.k,
+            *[k.bytes() for k in self.keys],
+            len(self.keys),
+            OP_CHECKMULTISIG,
+        ]
 
     def satisfaction(self, sat_material):
         sigs = []
@@ -461,7 +473,6 @@ class AndV(Node):
         assert sub_y.p.has_any("BKV")
 
         self.subs = [sub_x, sub_y]
-        self._script = sub_x._script + sub_y._script
 
         self.p = Property(
             sub_y.p.type()
@@ -487,6 +498,10 @@ class AndV(Node):
         self.exec_info = ExecutionInfo.from_concat(sub_x.exec_info, sub_y.exec_info)
         self.exec_info.set_undissatisfiable()  # it's V.
 
+    @property
+    def _script(self):
+        return sum((sub._script for sub in self.subs), start=[])
+
     def satisfaction(self, sat_material):
         return Satisfaction.from_concat(sat_material, *self.subs)
 
@@ -502,7 +517,6 @@ class AndB(Node):
         assert sub_x.p.B and sub_y.p.W
 
         self.subs = [sub_x, sub_y]
-        self._script = [*sub_x._script, *sub_y._script, OP_BOOLAND]
 
         self.p = Property(
             "Bu"
@@ -541,6 +555,10 @@ class AndB(Node):
             sub_x.exec_info, sub_y.exec_info, ops_count=1
         )
 
+    @property
+    def _script(self):
+        return sum((sub._script for sub in self.subs), start=[]) + [OP_BOOLAND]
+
     def satisfaction(self, sat_material):
         return Satisfaction.from_concat(sat_material, self.subs[0], self.subs[1])
 
@@ -557,7 +575,6 @@ class OrB(Node):
         assert sub_z.p.has_all("Wd")
 
         self.subs = [sub_x, sub_z]
-        self._script = [*sub_x._script, *sub_z._script, OP_BOOLOR]
 
         self.p = Property(
             "Bdu"
@@ -579,6 +596,10 @@ class OrB(Node):
             sub_x.exec_info, sub_z.exec_info, ops_count=1, disjunction=True
         )
 
+    @property
+    def _script(self):
+        return sum((sub._script for sub in self.subs), start=[]) + [OP_BOOLOR]
+
     def satisfaction(self, sat_material):
         return Satisfaction.from_concat(
             sat_material, self.subs[0], self.subs[1], disjunction=True
@@ -596,7 +617,6 @@ class OrC(Node):
         assert sub_x.p.has_all("Bdu") and sub_z.p.V
 
         self.subs = [sub_x, sub_z]
-        self._script = [*sub_x._script, OP_NOTIF, *sub_z._script, OP_ENDIF]
 
         self.p = Property(
             "V"
@@ -621,6 +641,10 @@ class OrC(Node):
         )
         self.exec_info.set_undissatisfiable()  # it's V.
 
+    @property
+    def _script(self):
+        return self.subs[0]._script + [OP_NOTIF] + self.subs[1]._script + [OP_ENDIF]
+
     def satisfaction(self, sat_material):
         return Satisfaction.from_or_uneven(sat_material, self.subs[0], self.subs[1])
 
@@ -637,7 +661,6 @@ class OrD(Node):
         assert sub_z.p.has_all("B")
 
         self.subs = [sub_x, sub_z]
-        self._script = [*sub_x._script, OP_IFDUP, OP_NOTIF, *sub_z._script, OP_ENDIF]
 
         self.p = Property(
             "B"
@@ -663,6 +686,15 @@ class OrD(Node):
             sub_x.exec_info, sub_z.exec_info, ops_count=3
         )
 
+    @property
+    def _script(self):
+        return (
+            self.subs[0]._script
+            + [OP_IFDUP, OP_NOTIF]
+            + self.subs[1]._script
+            + [OP_ENDIF]
+        )
+
     def satisfaction(self, sat_material):
         return Satisfaction.from_or_uneven(sat_material, self.subs[0], self.subs[1])
 
@@ -678,7 +710,6 @@ class OrI(Node):
         assert sub_x.p.type() == sub_z.p.type() and sub_x.p.has_any("BKV")
 
         self.subs = [sub_x, sub_z]
-        self._script = [OP_IF, *sub_x._script, OP_ELSE, *sub_z._script, OP_ENDIF]
 
         self.p = Property(
             sub_x.p.type()
@@ -706,6 +737,16 @@ class OrI(Node):
             sub_x.exec_info, sub_z.exec_info, ops_count=3
         )
 
+    @property
+    def _script(self):
+        return (
+            [OP_IF]
+            + self.subs[0]._script
+            + [OP_ELSE]
+            + self.subs[1]._script
+            + [OP_ENDIF]
+        )
+
     def satisfaction(self, sat_material):
         return (self.subs[0].satisfaction(sat_material) + Satisfaction([b"\x01"])) | (
             self.subs[1].satisfaction(sat_material) + Satisfaction([b""])
@@ -726,14 +767,6 @@ class AndOr(Node):
         assert sub_y.p.type() == sub_z.p.type() and sub_y.p.has_any("BKV")
 
         self.subs = [sub_x, sub_y, sub_z]
-        self._script = [
-            *sub_x._script,
-            OP_NOTIF,
-            *sub_z._script,
-            OP_ELSE,
-            *sub_y._script,
-            OP_ENDIF,
-        ]
 
         self.p = Property(
             sub_y.p.type()
@@ -779,6 +812,17 @@ class AndOr(Node):
             sub_x.exec_info, sub_y.exec_info, sub_z.exec_info, ops_count=3
         )
 
+    @property
+    def _script(self):
+        return (
+            self.subs[0]._script
+            + [OP_NOTIF]
+            + self.subs[2]._script
+            + [OP_ELSE]
+            + self.subs[1]._script
+            + [OP_ENDIF]
+        )
+
     def satisfaction(self, sat_material):
         # (A and B) or (!A and C)
         return (
@@ -809,10 +853,6 @@ class Thresh(Node):
 
         self.k = k
         self.subs = subs
-        self._script = copy.copy(subs[0]._script)
-        for sub in subs[1:]:
-            self._script += sub._script + [OP_ADD]
-        self._script += [k, OP_EQUAL]
 
         all_z = True
         all_z_but_one_odu = False
@@ -867,6 +907,14 @@ class Thresh(Node):
             )
         self.exec_info = ExecutionInfo.from_thresh(k, [sub.exec_info for sub in subs])
 
+    @property
+    def _script(self):
+        return (
+            self.subs[0]._script
+            + sum(((sub._script + [OP_ADD]) for sub in self.subs[1:]), start=[])
+            + [self.k, OP_EQUAL]
+        )
+
     def satisfaction(self, sat_material):
         return Satisfaction.from_thresh(sat_material, self.k, self.subs)
 
@@ -905,6 +953,11 @@ class WrapperNode(Node):
             and self.rel_timelocks
         )
 
+    @property
+    def sub(self):
+        # Wrapper have a single sub
+        return self.subs[0]
+
     def satisfaction(self, sat_material):
         # Most wrappers are satisfied this way, for special cases it's overriden.
         return self.subs[0].satisfaction(sat_material)
@@ -927,10 +980,12 @@ class WrapA(WrapperNode):
         assert sub.p.B
         WrapperNode.__init__(self, sub)
 
-        self._script = [OP_TOALTSTACK, *sub._script, OP_FROMALTSTACK]
-
         self.p = Property("W" + "".join(c for c in "ud" if getattr(sub.p, c)))
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=2)
+
+    @property
+    def _script(self):
+        return [OP_TOALTSTACK] + self.sub._script + [OP_FROMALTSTACK]
 
     def __repr__(self):
         # Don't duplicate colons
@@ -944,10 +999,12 @@ class WrapS(WrapperNode):
         assert sub.p.has_all("Bo")
         WrapperNode.__init__(self, sub)
 
-        self._script = [OP_SWAP, *sub._script]
-
         self.p = Property("W" + "".join(c for c in "ud" if getattr(sub.p, c)))
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
+
+    @property
+    def _script(self):
+        return [OP_SWAP] + self.sub._script
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -961,14 +1018,16 @@ class WrapC(WrapperNode):
         assert sub.p.K
         WrapperNode.__init__(self, sub)
 
-        self._script = [*sub._script, OP_CHECKSIG]
-
         # FIXME: shouldn't n and d be default props on the website?
         self.p = Property("Bsu" + "".join(c for c in "dno" if getattr(sub.p, c)))
         # FIXME: should need_sig be set to True here instead of in keys?
         self.exec_info = ExecutionInfo.from_wrap(
             sub.exec_info, ops_count=1, sat=1, dissat=1
         )
+
+    @property
+    def _script(self):
+        return self.sub._script + [OP_CHECKSIG]
 
     def __repr__(self):
         # Special case of aliases
@@ -1001,14 +1060,16 @@ class WrapD(WrapperNode):
         assert sub.p.has_all("Vz")
         WrapperNode.__init__(self, sub)
 
-        self._script = [OP_DUP, OP_IF, *sub._script, OP_ENDIF]
-
         self.p = Property("Bond")
         self.is_forced = True  # sub is V
         self.is_expressive = True  # sub is V, and we add a single dissat
         self.exec_info = ExecutionInfo.from_wrap_dissat(
             sub.exec_info, ops_count=3, sat=1, dissat=1
         )
+
+    @property
+    def _script(self):
+        return [OP_DUP, OP_IF] + self.sub._script + [OP_ENDIF]
 
     def satisfaction(self, sat_material):
         return Satisfaction(witness=[b"\x01"]) + self.subs[0].satisfaction(sat_material)
@@ -1028,20 +1089,21 @@ class WrapV(WrapperNode):
         assert sub.p.B
         WrapperNode.__init__(self, sub)
 
-        if sub._script[-1] == OP_CHECKSIG:
-            self._script = [*sub._script[:-1], OP_CHECKSIGVERIFY]
-        elif sub._script[-1] == OP_CHECKMULTISIG:
-            self._script = [*sub._script[:-1], OP_CHECKMULTISIGVERIFY]
-        elif sub._script[-1] == OP_EQUAL:
-            self._script = [*sub._script[:-1], OP_EQUALVERIFY]
-        else:
-            self._script = [*sub._script, OP_VERIFY]
-
         self.p = Property("Vf" + "".join(c for c in "zon" if getattr(sub.p, c)))
         self.is_forced = True  # V
         self.is_expressive = False  # V
         verify_cost = int(self._script[-1] == OP_VERIFY)
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=verify_cost)
+
+    @property
+    def _script(self):
+        if self.sub._script[-1] == OP_CHECKSIG:
+            return self.sub._script[:-1] + [OP_CHECKSIGVERIFY]
+        elif self.sub._script[-1] == OP_CHECKMULTISIG:
+            return self.sub._script[:-1] + [OP_CHECKMULTISIGVERIFY]
+        elif self.sub._script[-1] == OP_EQUAL:
+            return self.sub._script[:-1] + [OP_EQUALVERIFY]
+        return self.sub._script + [OP_VERIFY]
 
     def dissatisfaction(self):
         return Satisfaction.unavailable()  # It's V.
@@ -1058,14 +1120,16 @@ class WrapJ(WrapperNode):
         assert sub.p.has_all("Bn")
         WrapperNode.__init__(self, sub)
 
-        self._script = [OP_SIZE, OP_0NOTEQUAL, OP_IF, *sub._script, OP_ENDIF]
-
         self.p = Property("Bnd" + "".join(c for c in "ou" if getattr(sub.p, c)))
         self.is_forced = False  # d
         self.is_expressive = sub.is_forced
         self.exec_info = ExecutionInfo.from_wrap_dissat(
             sub.exec_info, ops_count=4, dissat=1
         )
+
+    @property
+    def _script(self):
+        return [OP_SIZE, OP_0NOTEQUAL, OP_IF, *self.sub._script, OP_ENDIF]
 
     def dissatisfaction(self):
         return Satisfaction(witness=[b""])
@@ -1082,10 +1146,12 @@ class WrapN(WrapperNode):
         assert sub.p.B
         WrapperNode.__init__(self, sub)
 
-        self._script = [*sub._script, OP_0NOTEQUAL]
-
         self.p = Property("Bu" + "".join(c for c in "zond" if getattr(sub.p, c)))
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
+
+    @property
+    def _script(self):
+        return [*self.sub._script, OP_0NOTEQUAL]
 
     def __repr__(self):
         # Avoid duplicating colons

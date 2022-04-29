@@ -276,3 +276,11 @@ def test_descriptor_parsing():
     for key in desc.keys:
         key.key = coincurve.PublicKey(key.key.pubkey)
     assert str(desc) == str(rust_bitcoin_desc_str)
+
+    # Same, but to check that the Script is actually being derived too...
+    desc_str = "wsh(multi(5,tpubD6NzVbkrYhZ4Yb5yyh2qqUnfGzyakvyzYei3qf2roEMuP7DFB47CDhcUW93YjFGGpwXgUbjeFfoapYyXyyUD2cT1tTzdBCMAhsNTmEJxLM2/*,tpubD6NzVbkrYhZ4Wn1byYeaSwqq6aHni5hQmzHmha8WUgQFH7H5mQ4NZXM8dTs52kqsaxFuau7edrm27ZXNbyp6V5vRJxLZ9oxB92F1dVVAnTn/*,tpubD6NzVbkrYhZ4XLQ56KtSZs1ezkUfD2f1QsUPRvVRqmoo1xsJ9DM6Yao4XKqkEDxGHenroWaooEbpjDTzr7W2LB5CYVPn83eacD1swW38W5G/*,tpubD6NzVbkrYhZ4Ys7ii3MvAhZVowvQRPHwT9uctEnxEmnXR7KtBqyEofT6LmvXov5tpMLDcMhNCC3pi4NrLq1vG51rPcsFGtP5MDHq2F9Bj5Z/*,tpubD6NzVbkrYhZ4WmzxsFZByU1tKop9SWd5YHH81b2gbT5ycGAkZfthcwNAcQZmxswzTvpjBaswKgbcEKksbkGW65wbQsA4DEaCq9c7SqUZ9oi/*))#p26mhq70, deriv index 0, desc wsh(multi(5,[838f8104/0]02de76d54f7e28d731f403f5d1fad4da1df208e1d6e00dbe6dfbadd804461c2743,[24e59fd4/0]02f65c2812d2a8d1da479d0cf32d4ca717263bcdadd4b3f11a014b8cc27f73ec44,[cf0b5330/0]024bf97e1bfc4b5c1de90172d50d92fe072da40a8ccd0f89cd5e858b9dc1226623,[cecf756b/0]023bdc599713ea7b982dc3f439aad24f6c6c8b1a4617f339ba976a48d9067a7d67,[04458729/0]0245cca25b3ecea1a82157bc98b9c35caa53d0f65b9ecb5bfdbb80749d22357c45))#h88gukn3"
+    desc = Descriptor.from_str(desc_str)
+    desc.derive(0)
+    assert desc.script_pubkey != Descriptor.from_str(desc_str).script_pubkey
+    assert desc.script_pubkey.hex() == "002076fb586cb821ac94fbe094e012b93d82cc42925bcf543415416f42aa3ba1822c"
+    assert desc.witness_script.script.hex() == "552102de76d54f7e28d731f403f5d1fad4da1df208e1d6e00dbe6dfbadd804461c27432102f65c2812d2a8d1da479d0cf32d4ca717263bcdadd4b3f11a014b8cc27f73ec4421024bf97e1bfc4b5c1de90172d50d92fe072da40a8ccd0f89cd5e858b9dc122662321023bdc599713ea7b982dc3f439aad24f6c6c8b1a4617f339ba976a48d9067a7d67210245cca25b3ecea1a82157bc98b9c35caa53d0f65b9ecb5bfdbb80749d22357c4555ae"
