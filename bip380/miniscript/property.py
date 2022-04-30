@@ -5,6 +5,7 @@
 
 from .errors import MiniscriptPropertyError
 
+
 # TODO: implement __eq__
 class Property:
     """Miniscript expression property"""
@@ -59,21 +60,26 @@ class Property:
                 num_types += 1
 
         # Check for conflicts in type & properties.
-        if not (
-            (not self.z or not self.o)
-            and (not self.n or not self.z)
-            and (not self.V or not self.d)
-            and (not self.K or self.u)
-            and (not self.V or not self.u)
-            and (not self.e or not self.f)
-            and (not self.e or self.d)
-            and (not self.V or not self.e)
-            and (not self.d or not self.f)
-            and (not self.V or self.f)
-            and (not self.K or self.s)
-            and (not self.z or self.m)
-        ):
-            raise MiniscriptPropertyError("Conflicting types and properties")
+        checks = [
+            # (type/property, must_be, must_not_be)
+            ("K", "us", ""),
+            ("V", "f", "due"),
+            ("z", "m", "o"),
+            ("n", "", "z"),
+            ("e", "d", "f"),
+            ("d", "", "f"),
+        ]
+        conflicts = []
+
+        for (attr, must_be, must_not_be) in checks:
+            if not getattr(self, attr):
+                continue
+            if not self.has_all(must_be):
+                conflicts.append(f"{attr} must be {must_be}")
+            if self.has_any(must_not_be):
+                conflicts.append(f"{attr} must not be {must_not_be}")
+        if conflicts:
+            raise MiniscriptPropertyError(f"Conflicting types and properties: {', '.join(conflicts)}")
 
     def type(self):
         return "".join(filter(lambda x: x in self.types, str(self)))
