@@ -50,14 +50,8 @@ class Property:
     def check_valid(self):
         """Raises a MiniscriptPropertyError if the types/properties conflict"""
         # Can only be of a single type.
-        num_types = 0
-        for typ in self.types:
-            if getattr(self, typ):
-                if num_types == 1:
-                    raise MiniscriptPropertyError(
-                        "A Miniscript fragment can only be of a single type"
-                    )
-                num_types += 1
+        if len(self.type()) > 1:
+            raise MiniscriptPropertyError("A Miniscript fragment can only be of a single type")
 
         # Check for conflicts in type & properties.
         checks = [
