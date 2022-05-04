@@ -51,7 +51,7 @@ class Property:
         """Raises a MiniscriptPropertyError if the types/properties conflict"""
         # Can only be of a single type.
         if len(self.type()) > 1:
-            raise MiniscriptPropertyError("A Miniscript fragment can only be of a single type")
+            raise MiniscriptPropertyError(f"A Miniscript fragment can only be of a single type, got '{self.type()}'")
 
         # Check for conflicts in type & properties.
         checks = [
