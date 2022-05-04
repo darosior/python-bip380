@@ -28,11 +28,16 @@ class Property:
 
     def __init__(self, property_str=""):
         """Create a property, optionally from a str of property and types"""
-        for c in property_str:
-            if c not in self.types + self.props:
-                raise MiniscriptPropertyError(f"Invalid property/type character '{c}'")
+        allowed = self.types + self.props
+        invalid = set(property_str).difference(set(allowed))
 
-        for literal in self.types + self.props:
+        if invalid:
+            raise MiniscriptPropertyError(
+                f"Invalid property/type character(s) '{''.join(invalid)}'"
+                f" (allowed: '{allowed}')"
+            )
+
+        for literal in allowed:
             setattr(self, literal, literal in property_str)
 
         self.check_valid()
