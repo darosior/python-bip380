@@ -35,6 +35,8 @@ class Property:
         for literal in self.types + self.props:
             setattr(self, literal, literal in property_str)
 
+        self.check_valid()
+
     def __repr__(self):
         """Generate string representation of property"""
         return "".join([c for c in self.types + self.props if getattr(self, c)])
