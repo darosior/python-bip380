@@ -8,15 +8,24 @@ This is currently focused on non-malleable satisfaction. We take shortcuts to no
 non-canonical (dis)satisfactions.
 """
 
+from __future__ import annotations
 
-def add_optional(a, b):
+from typing import Optional, Any, TYPE_CHECKING, Dict, List
+
+OptAny = Optional[Any]
+
+if TYPE_CHECKING:
+    from bip380.miniscript.fragments import Node
+
+
+def add_optional(a: OptAny, b: OptAny) -> OptAny:
     """Add two numbers that may be None together."""
     if a is None or b is None:
         return None
     return a + b
 
 
-def max_optional(a, b):
+def max_optional(a: OptAny, b: OptAny) -> OptAny:
     """Return the maximum of two numbers that may be None."""
     if a is None:
         return b
@@ -29,7 +38,11 @@ class SatisfactionMaterial:
     """Data that may be needed in order to satisfy a Minsicript fragment."""
 
     def __init__(
-        self, preimages={}, signatures={}, max_sequence=2 ** 32, max_lock_time=2 ** 32
+            self,
+            preimages: Dict[bytes, bytes] = {},
+            signatures: Dict[bytes, bytes] = {},
+            max_sequence: int = 2 ** 32,
+            max_lock_time: int = 2 ** 32,
     ):
         """
         :param preimages: Mapping from a hash (as bytes), to its 32-bytes preimage.
@@ -37,18 +50,18 @@ class SatisfactionMaterial:
         :param max_sequence: The maximum relative timelock possible (coin age).
         :param max_lock_time: The maximum absolute timelock possible (block height).
         """
-        self.preimages = preimages
-        self.signatures = signatures
-        self.max_sequence = max_sequence
-        self.max_lock_time = max_lock_time
+        self.preimages: Dict[bytes, bytes] = preimages
+        self.signatures: Dict[bytes, bytes] = signatures
+        self.max_sequence: int = max_sequence
+        self.max_lock_time: int = max_lock_time
 
-    def clear(self):
+    def clear(self) -> None:
         self.preimages.clear()
         self.signatures.clear()
         self.max_sequence = 0
         self.max_lock_time = 0
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"SatisfactionMaterial(preimages: {self.preimages}, signatures: "
             f"{self.signatures}, max_sequence: {self.max_sequence}, max_lock_time: "
@@ -59,22 +72,22 @@ class SatisfactionMaterial:
 class Satisfaction:
     """All information about a satisfaction."""
 
-    def __init__(self, witness, has_sig=False):
+    def __init__(self, witness: Optional[List[bytes]], has_sig: bool = False):
         assert isinstance(witness, list) or witness is None
-        self.witness = witness
-        self.has_sig = has_sig
+        self.witness: Optional[List[bytes]] = witness
+        self.has_sig: bool = has_sig
         # TODO: we probably need to take into account non-canon sats, as the algorithm
         # described on the website mandates it:
         # > Iterate over all the valid satisfactions/dissatisfactions in the table above
         # > (including the non-canonical ones),
 
-    def __add__(self, other):
+    def __add__(self, other: Satisfaction) -> Satisfaction:
         """Concatenate two satisfactions together."""
         witness = add_optional(self.witness, other.witness)
         has_sig = self.has_sig or other.has_sig
         return Satisfaction(witness, has_sig)
 
-    def __or__(self, other):
+    def __or__(self, other: Satisfaction) -> Satisfaction:
         """Choose between two (dis)satisfactions."""
         assert isinstance(other, Satisfaction)
 
@@ -109,16 +122,21 @@ class Satisfaction:
 
         return self
 
-    def unavailable():
+    def unavailable() -> Satisfaction:
         return Satisfaction(witness=None)
 
-    def is_unavailable(self):
+    def is_unavailable(self) -> bool:
         return self.witness is None
 
-    def size(self):
+    def size(self) -> int:
         return len(self.witness) + sum(len(elem) for elem in self.witness)
 
-    def from_concat(sat_material, sub_a, sub_b, disjunction=False):
+    def from_concat(
+            sat_material: SatisfactionMaterial,
+            sub_a: Node,
+            sub_b: Node,
+            disjunction: bool = False,
+    ) -> Satisfaction:
         """Get the satisfaction for a Miniscript whose Script corresponds to a
         concatenation of two subscripts A and B.
 
@@ -132,7 +150,7 @@ class Satisfaction:
             )
         return sub_b.satisfaction(sat_material) + sub_a.satisfaction(sat_material)
 
-    def from_or_uneven(sat_material, sub_a, sub_b):
+    def from_or_uneven(sat_material: SatisfactionMaterial, sub_a: Node, sub_b: Node) -> Satisfaction:
         """Get the satisfaction for a Miniscript which unconditionally executes a first
         sub A and only executes B if A was dissatisfied.
 
@@ -143,7 +161,7 @@ class Satisfaction:
             sub_b.satisfaction(sat_material) + sub_a.dissatisfaction()
         )
 
-    def from_thresh(sat_material, k, subs):
+    def from_thresh(sat_material: SatisfactionMaterial, k: int, subs: List[Node]) -> Satisfaction:
         """Get the satisfaction for a Miniscript which satisfies k of the given subs,
         and dissatisfies all the others.
 
@@ -189,24 +207,24 @@ class Satisfaction:
 class ExecutionInfo:
     """Information about the execution of a Miniscript."""
 
-    def __init__(self, stat_ops, _dyn_ops, sat_size, dissat_size):
+    def __init__(self, stat_ops: int, _dyn_ops: int, sat_size: int, dissat_size: int):
         # The *maximum* number of *always* executed non-PUSH Script OPs to satisfy this
         # Miniscript fragment non-malleably.
-        self._static_ops_count = stat_ops
+        self._static_ops_count: int = stat_ops
         # The maximum possible number of counted-as-executed-by-interpreter OPs if this
         # fragment is executed.
         # It is only >0 for an executed multi() branch. That is, for a CHECKMULTISIG that
         # is not part of an unexecuted branch of an IF .. ENDIF.
-        self._dyn_ops_count = _dyn_ops
+        self._dyn_ops_count: int = _dyn_ops
         # The *maximum* number of stack elements to satisfy this Miniscript fragment
         # non-malleably.
-        self.sat_elems = sat_size
+        self.sat_elems: int = sat_size
         # The *maximum* number of stack elements to dissatisfy this Miniscript fragment
         # non-malleably.
-        self.dissat_elems = dissat_size
+        self.dissat_elems: int = dissat_size
 
     @property
-    def ops_count(self):
+    def ops_count(self) -> int:
         """
         The worst-case number of OPs that would be considered executed by the Script
         interpreter.
@@ -214,15 +232,20 @@ class ExecutionInfo:
         """
         return self._static_ops_count + self._dyn_ops_count
 
-    def is_dissatisfiable(self):
+    def is_dissatisfiable(self) -> bool:
         """Whether the Miniscript is *non-malleably* dissatisfiable."""
         return self.dissat_elems is not None
 
-    def set_undissatisfiable(self):
+    def set_undissatisfiable(self) -> None:
         """Set the Miniscript as being impossible to dissatisfy."""
         self.dissat_elems = None
 
-    def from_concat(sub_a, sub_b, ops_count=0, disjunction=False):
+    def from_concat(
+            sub_a: ExecutionInfo,
+            sub_b: ExecutionInfo,
+            ops_count: int = 0,
+            disjunction: bool = False,
+    ) -> ExecutionInfo:
         """Compute the execution info from a Miniscript whose Script corresponds to
         a concatenation of two subscript A and B.
 
@@ -250,7 +273,7 @@ class ExecutionInfo:
 
         return ExecutionInfo(static_ops, dyn_ops, sat_elems, dissat_elems)
 
-    def from_or_uneven(sub_a, sub_b, ops_count=0):
+    def from_or_uneven(sub_a: ExecutionInfo, sub_b: ExecutionInfo, ops_count: int = 0) -> ExecutionInfo:
         """Compute the execution info from a Miniscript which always executes A and only
         executes B depending on the outcome of A's execution.
 
@@ -276,7 +299,7 @@ class ExecutionInfo:
 
         return ExecutionInfo(static_ops, dyn_ops, sat_elems, dissat_elems)
 
-    def from_or_even(sub_a, sub_b, ops_count):
+    def from_or_even(sub_a: ExecutionInfo, sub_b: ExecutionInfo, ops_count: int) -> ExecutionInfo:
         """Compute the execution info from a Miniscript which executes either A or B, but
         never both.
 
@@ -297,7 +320,12 @@ class ExecutionInfo:
 
         return ExecutionInfo(static_ops, dyn_ops, sat_elems, dissat_elems)
 
-    def from_andor_uneven(sub_a, sub_b, sub_c, ops_count=0):
+    def from_andor_uneven(
+            sub_a: ExecutionInfo,
+            sub_b: ExecutionInfo,
+            sub_c: ExecutionInfo,
+            ops_count: int = 0,
+    ) -> ExecutionInfo:
         """Compute the execution info from a Miniscript which always executes A, and then
         executes B if A returned True else executes C. Semantic: or(and(A,B), C).
 
@@ -331,7 +359,7 @@ class ExecutionInfo:
         return ExecutionInfo(static_ops, dyn_ops, sat_elems, dissat_elems)
 
     # TODO: i think it'd be possible to not have this be special-cased to 'thresh()'
-    def from_thresh(k, subs):
+    def from_thresh(k: int, subs: List[ExecutionInfo]) -> ExecutionInfo:
         """Compute the execution info from a Miniscript 'thresh()' fragment. Specialized
         to this specifc fragment for now.
 
@@ -375,7 +403,7 @@ class ExecutionInfo:
 
         return ExecutionInfo(static_ops, dyn_ops, sat_elems, dissat_elems)
 
-    def from_wrap(sub, ops_count, dyn=0, sat=0, dissat=0):
+    def from_wrap(sub: ExecutionInfo, ops_count: int, dyn: int = 0, sat: int = 0, dissat: int = 0) -> ExecutionInfo:
         """Compute the execution info from a Miniscript which always executes a subscript
         but adds some logic around.
 
@@ -392,7 +420,13 @@ class ExecutionInfo:
             add_optional(sub.dissat_elems, dissat),
         )
 
-    def from_wrap_dissat(sub, ops_count, dyn=0, sat=0, dissat=0):
+    def from_wrap_dissat(
+            sub: ExecutionInfo,
+            ops_count: int,
+            dyn: int = 0, sat:
+            int = 0,
+            dissat: int = 0,
+    ) -> ExecutionInfo:
         """Compute the execution info from a Miniscript which always executes a subscript
         but adds some logic around.
 

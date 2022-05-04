@@ -5,13 +5,14 @@
 """Utility functions related to output descriptors"""
 
 import re
+from typing import List, Optional
 
 INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
 CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 GENERATOR = [0xF5DEE51989, 0xA9FDCA3312, 0x1BAB10E32D, 0x3706B1677A, 0x644D626FFD]
 
 
-def descsum_polymod(symbols):
+def descsum_polymod(symbols: List[int]) -> int:
     """Internal function that computes the descriptor checksum."""
     chk = 1
     for value in symbols:
@@ -22,7 +23,7 @@ def descsum_polymod(symbols):
     return chk
 
 
-def descsum_expand(s):
+def descsum_expand(s: str) -> Optional[List[int]]:
     """Internal function that does the character to symbol expansion"""
     groups = []
     symbols = []
@@ -42,7 +43,7 @@ def descsum_expand(s):
     return symbols
 
 
-def descsum_create(s):
+def descsum_create(s: str) -> str:
     """Add a checksum to a descriptor without"""
     symbols = descsum_expand(s) + [0, 0, 0, 0, 0, 0, 0, 0]
     checksum = descsum_polymod(symbols) ^ 1
@@ -53,7 +54,7 @@ def descsum_create(s):
     )
 
 
-def descsum_check(s):
+def descsum_check(s: str) -> bool:
     """Verify that the checksum is correct in a descriptor"""
     if s[-9] != "#":
         return False
@@ -63,7 +64,7 @@ def descsum_check(s):
     return descsum_polymod(symbols) == 1
 
 
-def drop_origins(s):
+def drop_origins(s: str) -> str:
     """Drop the key origins from a descriptor"""
     desc = re.sub(r"\[.+?\]", "", s)
     if "#" in s:

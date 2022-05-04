@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import bip380.descriptors as descriptors
 
 from bip380.key import DescriptorKey, DescriptorKeyError
@@ -7,7 +9,7 @@ from bip380.descriptors.checksum import descsum_check
 from .errors import DescriptorParsingError
 
 
-def split_checksum(desc_str, strict=False):
+def split_checksum(desc_str: str, strict: bool = False) -> str:
     """Removes and check the provided checksum.
     If not told otherwise, this won't fail on a missing checksum.
 
@@ -28,7 +30,7 @@ def split_checksum(desc_str, strict=False):
     return descriptor
 
 
-def descriptor_from_str(desc_str, strict=False):
+def descriptor_from_str(desc_str: str, strict: bool = False) -> descriptors.Descriptor:
     """Parse a Bitcoin Output Script Descriptor from its string representation.
 
     :param strict: whether to require the presence of a checksum.

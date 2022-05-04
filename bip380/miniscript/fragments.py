@@ -4,14 +4,16 @@ Miniscript AST elements.
 Each element correspond to a Bitcoin Script fragment, and has various type properties.
 See the Miniscript website for the specification of the type system: https://bitcoin.sipa.be/miniscript/.
 """
+from __future__ import annotations
 
-import copy
+from typing import List, Dict, Union, Optional
+
 import bip380.miniscript.parsing as parsing
-
 from bip380.key import DescriptorKey
 from bip380.utils.hashes import hash160
 from bip380.utils.script import (
     CScript,
+    CScriptOp,
     OP_1,
     OP_0,
     OP_ADD,
@@ -42,11 +44,9 @@ from bip380.utils.script import (
     OP_VERIFY,
     OP_0NOTEQUAL,
 )
-
 from .errors import MiniscriptNodeCreationError
 from .property import Property
-from .satisfaction import ExecutionInfo, Satisfaction
-
+from .satisfaction import ExecutionInfo, Satisfaction, SatisfactionMaterial
 
 # Threshold for nLockTime: below this value it is interpreted as block number,
 # otherwise as UNIX timestamp.
@@ -62,61 +62,64 @@ class Node:
     """A Miniscript fragment."""
 
     # The fragment's type and properties
-    p = None
+    p: Property = None
     # List of all sub fragments
-    subs = []
+    subs: List[Node] = []
     # A list of Script elements, a CScript is created all at once in the script() method.
-    _script = []
+    _script: List[CScriptOp] = []
     # Whether any satisfaction for this fragment require a signature
-    needs_sig = None
+    needs_sig: bool = None
     # Whether any dissatisfaction for this fragment requires a signature
-    is_forced = None
+    is_forced: bool = None
     # Whether this fragment has a unique unconditional satisfaction, and all conditional
     # ones require a signature.
-    is_expressive = None
+    is_expressive: bool = None
     # Whether for any possible way to satisfy this fragment (may be none), a
     # non-malleable satisfaction exists.
-    is_nonmalleable = None
+    is_nonmalleable: bool = None
     # Whether this node or any of its subs contains an absolute heightlock
-    abs_heightlocks = None
+    abs_heightlocks: bool = None
     # Whether this node or any of its subs contains a relative heightlock
-    rel_heightlocks = None
+    rel_heightlocks: bool = None
     # Whether this node or any of its subs contains an absolute timelock
-    abs_timelocks = None
+    abs_timelocks: bool = None
     # Whether this node or any of its subs contains a relative timelock
-    rel_timelocks = None
+    rel_timelocks: bool = None
     # Whether this node does not contain a mix of timelock or heightlock of different types.
     # That is, not (abs_heightlocks and rel_heightlocks or abs_timelocks and abs_timelocks)
-    no_timelock_mix = None
+    no_timelock_mix: bool = None
     # Information about this Miniscript execution (satisfaction cost, etc..)
-    exec_info = None
+    exec_info: ExecutionInfo = None
 
     def __init__(self, *args, **kwargs):
         # Needs to be implemented by derived classes.
         raise NotImplementedError
 
-    def from_str(ms_str):
+    def from_str(ms_str: str) -> Node:
         """Parse a Miniscript fragment from its string representation."""
         assert isinstance(ms_str, str)
         return parsing.miniscript_from_str(ms_str)
 
-    def from_script(script, pkh_preimages={}):
+    def from_script(
+            script: CScript,
+            pkh_preimages: Dict[bytes, Union[bytes, str, DescriptorKey]] = {}
+    ) -> CScriptOp:
         """Decode a Miniscript fragment from its Script representation."""
         assert isinstance(script, CScript)
         return parsing.miniscript_from_script(script, pkh_preimages)
 
     # TODO: have something like BuildScript from Core and get rid of the _script member.
     @property
-    def script(self):
+    def script(self) -> CScript:
         return CScript(self._script)
 
     @property
-    def keys(self):
+    def keys(self) -> List[DescriptorKey]:
         """Get the list of all keys from this Miniscript, in order of apparition."""
         # Overriden by fragments that actually have keys.
         return [key for sub in self.subs for key in sub.keys]
 
-    def satisfy(self, sat_material):
+    def satisfy(self, sat_material: SatisfactionMaterial) -> Optional[List[bytes]]:
         """Get the witness of the smallest non-malleable satisfaction for this fragment,
         if one exists.
 
@@ -128,7 +131,7 @@ class Node:
             return None
         return sat.witness
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         """Get the satisfaction for this fragment.
 
         :param sat_material: a SatisfactionMaterial containing available data to satisfy
@@ -137,7 +140,7 @@ class Node:
         # Needs to be implemented by derived classes.
         raise NotImplementedError
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         """Get the dissatisfaction for this fragment."""
         # Needs to be implemented by derived classes.
         raise NotImplementedError
@@ -160,13 +163,13 @@ class Just0(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(0, 0, None, 0)
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         return Satisfaction.unavailable()
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction(witness=[])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "0"
 
 
@@ -187,13 +190,13 @@ class Just1(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(0, 0, 0, None)
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         return Satisfaction(witness=[])
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction.unavailable()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "1"
 
 
@@ -203,7 +206,7 @@ class PkNode(Node):
     Should not be instanced directly, use Pk() or Pkh().
     """
 
-    def __init__(self, pubkey):
+    def __init__(self, pubkey: Union[bytes, str, DescriptorKey]):
 
         if isinstance(pubkey, bytes) or isinstance(pubkey, str):
             self.pubkey = DescriptorKey(pubkey)
@@ -223,69 +226,69 @@ class PkNode(Node):
         self.no_timelock_mix = True
 
     @property
-    def keys(self):
+    def keys(self) -> List[DescriptorKey]:
         return [self.pubkey]
 
 
 # TODO: A PkNode class to inherit those two from?
 class Pk(PkNode):
-    def __init__(self, pubkey):
+    def __init__(self, pubkey: Union[bytes, str, DescriptorKey]):
         PkNode.__init__(self, pubkey)
 
         self.p = Property("Konud")
         self.exec_info = ExecutionInfo(0, 0, 0, 0)
 
     @property
-    def _script(self):
+    def _script(self) -> List[bytes]:
         return [self.pubkey.bytes()]
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         sig = sat_material.signatures.get(self.pubkey.bytes())
         if sig is None:
             return Satisfaction.unavailable()
         return Satisfaction([sig], has_sig=True)
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction(witness=[b""])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"pk_k({self.pubkey})"
 
 
 class Pkh(PkNode):
     # FIXME: should we support a hash here, like rust-bitcoin? I don't think it's safe.
-    def __init__(self, pubkey):
+    def __init__(self, pubkey: Union[bytes, str, DescriptorKey]):
         PkNode.__init__(self, pubkey)
 
         self.p = Property("Knud")
         self.exec_info = ExecutionInfo(3, 0, 1, 1)
 
     @property
-    def _script(self):
+    def _script(self) -> List[Union[CScriptOp, bytes]]:
         return [OP_DUP, OP_HASH160, self.pk_hash(), OP_EQUALVERIFY]
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         sig = sat_material.signatures.get(self.pubkey.bytes())
         if sig is None:
             return Satisfaction.unavailable()
         return Satisfaction(witness=[sig, self.pubkey.bytes()], has_sig=True)
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction(witness=[b"", self.pubkey.bytes()])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"pk_h({self.pubkey})"
 
-    def pk_hash(self):
+    def pk_hash(self) -> bytes:
         assert isinstance(self.pubkey, DescriptorKey)
         return hash160(self.pubkey.bytes())
 
 
 class Older(Node):
-    def __init__(self, value):
+    def __init__(self, value: int):
         assert value > 0 and value < 2 ** 31
 
-        self.value = value
+        self.value: int = value
         self._script = [self.value, OP_CHECKSEQUENCEVERIFY]
 
         self.p = Property("Bz")
@@ -300,23 +303,23 @@ class Older(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(1, 0, 0, None)
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         if sat_material.max_sequence < self.value:
             return Satisfaction.unavailable()
         return Satisfaction(witness=[])
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction.unavailable()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"older({self.value})"
 
 
 class After(Node):
-    def __init__(self, value):
+    def __init__(self, value: int):
         assert value > 0 and value < 2 ** 31
 
-        self.value = value
+        self.value: int = value
         self._script = [self.value, OP_CHECKLOCKTIMEVERIFY]
 
         self.p = Property("Bz")
@@ -331,15 +334,15 @@ class After(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(1, 0, 0, None)
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         if sat_material.max_lock_time < self.value:
             return Satisfaction.unavailable()
         return Satisfaction(witness=[])
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction.unavailable()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"after({self.value})"
 
 
@@ -349,10 +352,10 @@ class HashNode(Node):
     Should not be instanced directly, use concrete fragments instead.
     """
 
-    def __init__(self, digest, hash_op):
+    def __init__(self, digest: bytes, hash_op: CScriptOp):
         assert isinstance(digest, bytes)  # TODO: real errors
 
-        self.digest = digest
+        self.digest: bytes = digest
         self._script = [OP_SIZE, 32, OP_EQUALVERIFY, hash_op, digest, OP_EQUAL]
 
         self.p = Property("Bonud")
@@ -367,60 +370,60 @@ class HashNode(Node):
         self.no_timelock_mix = True
         self.exec_info = ExecutionInfo(4, 0, 1, None)
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         preimage = sat_material.preimages.get(self.digest)
         if preimage is None:
             return Satisfaction.unavailable()
         return Satisfaction(witness=[preimage])
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction.unavailable()
         return Satisfaction(witness=[b""])
 
 
 class Sha256(HashNode):
-    def __init__(self, digest):
+    def __init__(self, digest: bytes):
         assert len(digest) == 32  # TODO: real errors
         HashNode.__init__(self, digest, OP_SHA256)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"sha256({self.digest.hex()})"
 
 
 class Hash256(HashNode):
-    def __init__(self, digest):
+    def __init__(self, digest: bytes):
         assert len(digest) == 32  # TODO: real errors
         HashNode.__init__(self, digest, OP_HASH256)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"hash256({self.digest.hex()})"
 
 
 class Ripemd160(HashNode):
-    def __init__(self, digest):
+    def __init__(self, digest: bytes):
         assert len(digest) == 20  # TODO: real errors
         HashNode.__init__(self, digest, OP_RIPEMD160)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"ripemd160({self.digest.hex()})"
 
 
 class Hash160(HashNode):
-    def __init__(self, digest):
+    def __init__(self, digest: bytes):
         assert len(digest) == 20  # TODO: real errors
         HashNode.__init__(self, digest, OP_HASH160)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"hash160({self.digest.hex()})"
 
 
 class Multi(Node):
-    def __init__(self, k, keys):
+    def __init__(self, k: int, keys: List[DescriptorKey]):
         assert 1 <= k <= len(keys)
         assert all(isinstance(k, DescriptorKey) for k in keys)
 
-        self.k = k
-        self.pubkeys = keys
+        self.k: int = k
+        self.pubkeys: List[DescriptorKey] = keys
 
         self.p = Property("Bndu")
         self.needs_sig = True
@@ -435,11 +438,11 @@ class Multi(Node):
         self.exec_info = ExecutionInfo(1, len(keys), 1 + k, 1 + k)
 
     @property
-    def keys(self):
+    def keys(self) -> List[DescriptorKey]:
         return self.pubkeys
 
     @property
-    def _script(self):
+    def _script(self) -> List[int, bytes, CScriptOp]:
         return [
             self.k,
             *[k.bytes() for k in self.keys],
@@ -447,7 +450,7 @@ class Multi(Node):
             OP_CHECKMULTISIG,
         ]
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         sigs = []
         for key in self.keys:
             sig = sat_material.signatures.get(key.bytes())
@@ -460,15 +463,15 @@ class Multi(Node):
             return Satisfaction.unavailable()
         return Satisfaction(witness=[b""] + sigs, has_sig=True)
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction(witness=[b""] * (self.k + 1))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"multi({','.join([str(self.k)] + [str(k) for k in self.keys])})"
 
 
 class AndV(Node):
-    def __init__(self, sub_x, sub_y):
+    def __init__(self, sub_x: Node, sub_y: Node):
         assert sub_x.p.V
         assert sub_y.p.has_any("BKV")
 
@@ -499,21 +502,21 @@ class AndV(Node):
         self.exec_info.set_undissatisfiable()  # it's V.
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return sum((sub._script for sub in self.subs), start=[])
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         return Satisfaction.from_concat(sat_material, *self.subs)
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction.unavailable()  # it's V.
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"and_v({','.join(map(str, self.subs))})"
 
 
 class AndB(Node):
-    def __init__(self, sub_x, sub_y):
+    def __init__(self, sub_x: Node, sub_y: Node):
         assert sub_x.p.B and sub_y.p.W
 
         self.subs = [sub_x, sub_y]
@@ -549,21 +552,21 @@ class AndB(Node):
         )
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return sum((sub._script for sub in self.subs), start=[]) + [OP_BOOLAND]
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         return Satisfaction.from_concat(sat_material, self.subs[0], self.subs[1])
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return self.subs[1].dissatisfaction() + self.subs[0].dissatisfaction()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"and_b({','.join(map(str, self.subs))})"
 
 
 class OrB(Node):
-    def __init__(self, sub_x, sub_z):
+    def __init__(self, sub_x: Node, sub_z: Node):
         assert sub_x.p.has_all("Bd")
         assert sub_z.p.has_all("Wd")
 
@@ -590,23 +593,23 @@ class OrB(Node):
         )
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return sum((sub._script for sub in self.subs), start=[]) + [OP_BOOLOR]
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         return Satisfaction.from_concat(
             sat_material, self.subs[0], self.subs[1], disjunction=True
         )
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return self.subs[1].dissatisfaction() + self.subs[0].dissatisfaction()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"or_b({','.join(map(str, self.subs))})"
 
 
 class OrC(Node):
-    def __init__(self, sub_x, sub_z):
+    def __init__(self, sub_x: Node, sub_z: Node):
         assert sub_x.p.has_all("Bdu") and sub_z.p.V
 
         self.subs = [sub_x, sub_z]
@@ -635,21 +638,21 @@ class OrC(Node):
         self.exec_info.set_undissatisfiable()  # it's V.
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return self.subs[0]._script + [OP_NOTIF] + self.subs[1]._script + [OP_ENDIF]
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         return Satisfaction.from_or_uneven(sat_material, self.subs[0], self.subs[1])
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction.unavailable()  # it's V.
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"or_c({','.join(map(str, self.subs))})"
 
 
 class OrD(Node):
-    def __init__(self, sub_x, sub_z):
+    def __init__(self, sub_x: Node, sub_z: Node):
         assert sub_x.p.has_all("Bdu")
         assert sub_z.p.has_all("B")
 
@@ -680,7 +683,7 @@ class OrD(Node):
         )
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return (
             self.subs[0]._script
             + [OP_IFDUP, OP_NOTIF]
@@ -688,18 +691,18 @@ class OrD(Node):
             + [OP_ENDIF]
         )
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         return Satisfaction.from_or_uneven(sat_material, self.subs[0], self.subs[1])
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return self.subs[1].dissatisfaction() + self.subs[0].dissatisfaction()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"or_d({','.join(map(str, self.subs))})"
 
 
 class OrI(Node):
-    def __init__(self, sub_x, sub_z):
+    def __init__(self, sub_x: Node, sub_z: Node):
         assert sub_x.p.type() == sub_z.p.type() and sub_x.p.has_any("BKV")
 
         self.subs = [sub_x, sub_z]
@@ -731,7 +734,7 @@ class OrI(Node):
         )
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return (
             [OP_IF]
             + self.subs[0]._script
@@ -740,22 +743,22 @@ class OrI(Node):
             + [OP_ENDIF]
         )
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         return (self.subs[0].satisfaction(sat_material) + Satisfaction([b"\x01"])) | (
             self.subs[1].satisfaction(sat_material) + Satisfaction([b""])
         )
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return (self.subs[0].dissatisfaction() + Satisfaction(witness=[b"\x01"])) | (
             self.subs[1].dissatisfaction() + Satisfaction(witness=[b""])
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"or_i({','.join(map(str, self.subs))})"
 
 
 class AndOr(Node):
-    def __init__(self, sub_x, sub_y, sub_z):
+    def __init__(self, sub_x: Node, sub_y: Node, sub_z: Node):
         assert sub_x.p.has_all("Bdu")
         assert sub_y.p.type() == sub_z.p.type() and sub_y.p.has_any("BKV")
 
@@ -806,7 +809,7 @@ class AndOr(Node):
         )
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return (
             self.subs[0]._script
             + [OP_NOTIF]
@@ -816,35 +819,35 @@ class AndOr(Node):
             + [OP_ENDIF]
         )
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         # (A and B) or (!A and C)
         return (
             self.subs[1].satisfaction(sat_material)
             + self.subs[0].satisfaction(sat_material)
         ) | (self.subs[2].satisfaction(sat_material) + self.subs[0].dissatisfaction())
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         # Dissatisfy X and Z
         return self.subs[2].dissatisfaction() + self.subs[0].dissatisfaction()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"andor({','.join(map(str, self.subs))})"
 
 
 class AndN(AndOr):
-    def __init__(self, sub_x, sub_y):
+    def __init__(self, sub_x: Node, sub_y: Node):
         AndOr.__init__(self, sub_x, sub_y, Just0())
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"and_n({self.subs[0]},{self.subs[1]})"
 
 
 class Thresh(Node):
-    def __init__(self, k, subs):
+    def __init__(self, k: int, subs: List[Node]):
         n = len(subs)
         assert 1 <= k <= n
 
-        self.k = k
+        self.k: int = k
         self.subs = subs
 
         all_z = True
@@ -901,22 +904,22 @@ class Thresh(Node):
         self.exec_info = ExecutionInfo.from_thresh(k, [sub.exec_info for sub in subs])
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return (
             self.subs[0]._script
             + sum(((sub._script + [OP_ADD]) for sub in self.subs[1:]), start=[])
             + [self.k, OP_EQUAL]
         )
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         return Satisfaction.from_thresh(sat_material, self.k, self.subs)
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return sum(
             [sub.dissatisfaction() for sub in self.subs], start=Satisfaction(witness=[])
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"thresh({self.k},{','.join(map(str, self.subs))})"
 
 
@@ -926,7 +929,7 @@ class WrapperNode(Node):
     Don't instanciate it directly, use concret wrapper fragments instead.
     """
 
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         self.subs = [sub]
 
         # Properties for most wrappers are directly inherited. When it's not, they
@@ -947,19 +950,19 @@ class WrapperNode(Node):
         )
 
     @property
-    def sub(self):
+    def sub(self) -> Node:
         # Wrapper have a single sub
         return self.subs[0]
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         # Most wrappers are satisfied this way, for special cases it's overriden.
         return self.subs[0].satisfaction(sat_material)
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         # Most wrappers are satisfied this way, for special cases it's overriden.
         return self.subs[0].dissatisfaction()
 
-    def skip_colon(self):
+    def skip_colon(self) -> bool:
         # We need to check this because of the pk() and pkh() aliases.
         if isinstance(self.subs[0], WrapC) and isinstance(
             self.subs[0].subs[0], (Pk, Pkh)
@@ -969,7 +972,7 @@ class WrapperNode(Node):
 
 
 class WrapA(WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         assert sub.p.B
         WrapperNode.__init__(self, sub)
 
@@ -977,10 +980,10 @@ class WrapA(WrapperNode):
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=2)
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return [OP_TOALTSTACK] + self.sub._script + [OP_FROMALTSTACK]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Don't duplicate colons
         if self.skip_colon():
             return f"a{self.subs[0]}"
@@ -988,7 +991,7 @@ class WrapA(WrapperNode):
 
 
 class WrapS(WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         assert sub.p.has_all("Bo")
         WrapperNode.__init__(self, sub)
 
@@ -996,10 +999,10 @@ class WrapS(WrapperNode):
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return [OP_SWAP] + self.sub._script
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Avoid duplicating colons
         if self.skip_colon():
             return f"s{self.subs[0]}"
@@ -1007,7 +1010,7 @@ class WrapS(WrapperNode):
 
 
 class WrapC(WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         assert sub.p.K
         WrapperNode.__init__(self, sub)
 
@@ -1019,10 +1022,10 @@ class WrapC(WrapperNode):
         )
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return self.sub._script + [OP_CHECKSIG]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Special case of aliases
         if isinstance(self.subs[0], Pk):
             return f"pk({self.subs[0].pubkey})"
@@ -1035,13 +1038,13 @@ class WrapC(WrapperNode):
 
 
 class WrapT(AndV, WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         AndV.__init__(self, sub, Just1())
 
-    def is_wrapper(self):
+    def is_wrapper(self) -> True:
         return True
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Avoid duplicating colons
         if self.skip_colon():
             return f"t{self.subs[0]}"
@@ -1049,7 +1052,7 @@ class WrapT(AndV, WrapperNode):
 
 
 class WrapD(WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         assert sub.p.has_all("Vz")
         WrapperNode.__init__(self, sub)
 
@@ -1061,16 +1064,16 @@ class WrapD(WrapperNode):
         )
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return [OP_DUP, OP_IF] + self.sub._script + [OP_ENDIF]
 
-    def satisfaction(self, sat_material):
+    def satisfaction(self, sat_material: SatisfactionMaterial) -> Satisfaction:
         return Satisfaction(witness=[b"\x01"]) + self.subs[0].satisfaction(sat_material)
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction(witness=[b""])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Avoid duplicating colons
         if self.skip_colon():
             return f"d{self.subs[0]}"
@@ -1078,7 +1081,7 @@ class WrapD(WrapperNode):
 
 
 class WrapV(WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         assert sub.p.B
         WrapperNode.__init__(self, sub)
 
@@ -1089,7 +1092,7 @@ class WrapV(WrapperNode):
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=verify_cost)
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         if self.sub._script[-1] == OP_CHECKSIG:
             return self.sub._script[:-1] + [OP_CHECKSIGVERIFY]
         elif self.sub._script[-1] == OP_CHECKMULTISIG:
@@ -1098,10 +1101,10 @@ class WrapV(WrapperNode):
             return self.sub._script[:-1] + [OP_EQUALVERIFY]
         return self.sub._script + [OP_VERIFY]
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction.unavailable()  # It's V.
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Avoid duplicating colons
         if self.skip_colon():
             return f"v{self.subs[0]}"
@@ -1109,7 +1112,7 @@ class WrapV(WrapperNode):
 
 
 class WrapJ(WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         assert sub.p.has_all("Bn")
         WrapperNode.__init__(self, sub)
 
@@ -1121,13 +1124,13 @@ class WrapJ(WrapperNode):
         )
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return [OP_SIZE, OP_0NOTEQUAL, OP_IF, *self.sub._script, OP_ENDIF]
 
-    def dissatisfaction(self):
+    def dissatisfaction(self) -> Satisfaction:
         return Satisfaction(witness=[b""])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Avoid duplicating colons
         if self.skip_colon():
             return f"j{self.subs[0]}"
@@ -1135,7 +1138,7 @@ class WrapJ(WrapperNode):
 
 
 class WrapN(WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         assert sub.p.B
         WrapperNode.__init__(self, sub)
 
@@ -1143,10 +1146,10 @@ class WrapN(WrapperNode):
         self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
 
     @property
-    def _script(self):
+    def _script(self) -> List[CScriptOp]:
         return [*self.sub._script, OP_0NOTEQUAL]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Avoid duplicating colons
         if self.skip_colon():
             return f"n{self.subs[0]}"
@@ -1154,10 +1157,10 @@ class WrapN(WrapperNode):
 
 
 class WrapL(OrI, WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         OrI.__init__(self, Just0(), sub)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Avoid duplicating colons
         if self.skip_colon():
             return f"l{self.subs[1]}"
@@ -1165,10 +1168,10 @@ class WrapL(OrI, WrapperNode):
 
 
 class WrapU(OrI, WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub: Node):
         OrI.__init__(self, sub, Just0())
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Avoid duplicating colons
         if self.skip_colon():
             return f"u{self.subs[0]}"
