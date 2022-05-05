@@ -5,6 +5,7 @@ Utilities to parse Miniscript from string and Script representations.
 import bip380.miniscript.fragments as fragments
 
 from bip380.key import DescriptorKey
+from bip380.miniscript.errors import MiniscriptMalformed
 from bip380.utils.script import (
     CScriptOp,
     OP_ADD,
@@ -498,7 +499,7 @@ def parse_expr_list(expr_list):
         idx -= 1
 
     # No match found.
-    raise Exception("Malformed miniscript")
+    raise MiniscriptMalformed(f"{expr_list}")
 
 
 def miniscript_from_script(script, pkh_preimages={}):
