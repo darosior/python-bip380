@@ -175,7 +175,7 @@ class Just1(Node):
 
         self._script = [OP_1]
 
-        self.p = Property("Bzufm")
+        self.p = Property("Bzu")
         self.needs_sig = False
         self.is_forced = True  # No dissat
         self.is_expressive = False  # No dissat
@@ -525,13 +525,6 @@ class AndB(Node):
             + ("n" if sub_x.p.n or sub_x.p.z and sub_y.p.n else "")
             + ("d" if sub_x.p.d and sub_y.p.d else "")
             + ("u" if sub_y.p.u else "")
-            + (
-                "f"
-                if sub_x.p.f
-                and sub_y.p.f
-                or any(c.p.has_all("sf") for c in [sub_x, sub_y])
-                else ""
-            )
         )
         self.needs_sig = any(sub.needs_sig for sub in self.subs)
         self.is_forced = (
@@ -879,9 +872,9 @@ class Thresh(Node):
                     # They were all 'z' up to now.
                     all_z_but_one_odu = True
                 all_z = False
-            all_e = all_e and sub.p.e
-            all_m = all_m and sub.p.m
-            if sub.p.s:
+            all_e = all_e and sub.is_expressive
+            all_m = all_m and sub.is_nonmalleable
+            if sub.needs_sig:
                 s_count += 1
             if k > 1:
                 self.abs_heightlocks |= sub.abs_heightlocks
@@ -1019,7 +1012,7 @@ class WrapC(WrapperNode):
         WrapperNode.__init__(self, sub)
 
         # FIXME: shouldn't n and d be default props on the website?
-        self.p = Property("Bsu" + "".join(c for c in "dno" if getattr(sub.p, c)))
+        self.p = Property("Bu" + "".join(c for c in "dno" if getattr(sub.p, c)))
         # FIXME: should need_sig be set to True here instead of in keys?
         self.exec_info = ExecutionInfo.from_wrap(
             sub.exec_info, ops_count=1, sat=1, dissat=1
@@ -1089,7 +1082,7 @@ class WrapV(WrapperNode):
         assert sub.p.B
         WrapperNode.__init__(self, sub)
 
-        self.p = Property("Vf" + "".join(c for c in "zon" if getattr(sub.p, c)))
+        self.p = Property("V" + "".join(c for c in "zon" if getattr(sub.p, c)))
         self.is_forced = True  # V
         self.is_expressive = False  # V
         verify_cost = int(self._script[-1] == OP_VERIFY)
