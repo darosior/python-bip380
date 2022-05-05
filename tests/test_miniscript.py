@@ -23,6 +23,7 @@ from bitcointx.core.script import (
 from itertools import chain
 from bip380.key import DescriptorKey
 from bip380.miniscript import fragments, SatisfactionMaterial
+from bip380.miniscript.errors import MiniscriptMalformed
 from bip380.utils.script import CScript
 
 
@@ -90,11 +91,11 @@ def test_simple_sanity_checks():
     assert roundtrip("after(16407)").value == 16407
     assert roundtrip("after(1621038656)").value == 1621038656
     # CSV with a negative value
-    with pytest.raises(Exception):
-        fragments.Node.from_script(b"\x86\x92\xB2")
+    with pytest.raises(MiniscriptMalformed):
+        fragments.Node.from_script(CScript(b"\x86\x92\xB2"))
     # CLTV with a negative value
-    with pytest.raises(Exception):
-        fragments.Node.from_script(b"\x86\x92\xB1")
+    with pytest.raises(MiniscriptMalformed):
+        fragments.Node.from_script(CScript(b"\x86\x92\xB1"))
 
     roundtrip(f"pk({dummy_pk()})")
     roundtrip(f"pk_k({dummy_pk()})")
