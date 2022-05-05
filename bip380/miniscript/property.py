@@ -19,12 +19,8 @@ class Property:
     # "n": Nonzero arg property
     # "d": Dissatisfiable property
     # "u": Unit property
-    # "e": Expression property
-    # "f": Forced property
-    # "s": Safe property
-    # "m": Nonmalleable property
     types = "BVKW"
-    props = "zonduefsm"
+    props = "zondu"
 
     def __init__(self, property_str=""):
         """Create a property, optionally from a str of property and types"""
@@ -56,12 +52,10 @@ class Property:
         # Check for conflicts in type & properties.
         checks = [
             # (type/property, must_be, must_not_be)
-            ("K", "us", ""),
-            ("V", "f", "due"),
-            ("z", "m", "o"),
+            ("K", "u", ""),
+            ("V", "", "du"),
+            ("z", "", "o"),
             ("n", "", "z"),
-            ("e", "d", "f"),
-            ("d", "", "f"),
         ]
         conflicts = []
 
