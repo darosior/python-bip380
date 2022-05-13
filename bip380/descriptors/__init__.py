@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import List, TYPE_CHECKING
+
 from bip380.key import DescriptorKey
 from bip380.miniscript import Node
 from bip380.utils.hashes import sha256, hash160
@@ -8,15 +12,17 @@ from bip380.utils.script import (
     OP_EQUALVERIFY,
     OP_CHECKSIG,
 )
-
 from .checksum import descsum_create
 from .parsing import descriptor_from_str
+
+if TYPE_CHECKING:
+    from bip380.miniscript import SatisfactionMaterial
 
 
 class Descriptor:
     """A Bitcoin Output Script Descriptor."""
 
-    def from_str(desc_str, strict=False):
+    def from_str(desc_str: str, strict: bool = False) -> Descriptor:
         """Parse a Bitcoin Output Script Descriptor from its string representation.
 
         :param strict: whether to require the presence of a checksum.
@@ -24,24 +30,24 @@ class Descriptor:
         return descriptor_from_str(desc_str, strict)
 
     @property
-    def script_pubkey(self):
+    def script_pubkey(self) -> CScript:
         """Get the ScriptPubKey (output 'locking' Script) for this descriptor."""
         # To be implemented by derived classes
         raise NotImplementedError
 
     @property
-    def script_sighash(self):
+    def script_sighash(self) -> CScript:
         """Get the Script to be committed to by the signature hash of a spending transaction."""
         # To be implemented by derived classes
         raise NotImplementedError
 
     @property
-    def keys(self):
+    def keys(self) -> List[DescriptorKey]:
         """Get the list of all keys from this descriptor, in order of apparition."""
         # To be implemented by derived classes
         raise NotImplementedError
 
-    def derive(self, index):
+    def derive(self, index: int) -> None:
         """Derive the key at the given derivation index.
 
         A no-op if the key isn't a wildcard. Will start from 2**31 if the key is a "hardened
@@ -65,27 +71,27 @@ class Descriptor:
 class WshDescriptor(Descriptor):
     """A Segwit v0 P2WSH Output Script Descriptor."""
 
-    def __init__(self, witness_script):
+    def __init__(self, witness_script: Node):
         assert isinstance(witness_script, Node)
-        self.witness_script = witness_script
+        self.witness_script: Node = witness_script
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return descsum_create(f"wsh({self.witness_script})")
 
     @property
-    def script_pubkey(self):
+    def script_pubkey(self) -> CScript:
         witness_program = sha256(self.witness_script.script)
         return CScript([0, witness_program])
 
     @property
-    def script_sighash(self):
+    def script_sighash(self) -> CScript:
         return self.witness_script.script
 
     @property
-    def keys(self):
+    def keys(self) -> List[DescriptorKey]:
         return self.witness_script.keys
 
-    def satisfy(self, sat_material=None):
+    def satisfy(self, sat_material: SatisfactionMaterial = None) -> List[Node]:
         """Get the witness stack to spend from this descriptor.
 
         :param sat_material: a miniscript.satisfaction.SatisfactionMaterial with data
@@ -99,28 +105,28 @@ class WshDescriptor(Descriptor):
 class WpkhDescriptor(Descriptor):
     """A Segwit v0 P2WPKH Output Script Descriptor."""
 
-    def __init__(self, pubkey):
+    def __init__(self, pubkey: DescriptorKey):
         assert isinstance(pubkey, DescriptorKey)
         self.pubkey = pubkey
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return descsum_create(f"wpkh({self.pubkey})")
 
     @property
-    def script_pubkey(self):
+    def script_pubkey(self) -> CScript:
         witness_program = hash160(self.pubkey.bytes())
         return CScript([0, witness_program])
 
     @property
-    def script_sighash(self):
+    def script_sighash(self) -> CScript:
         key_hash = hash160(self.pubkey.bytes())
         return CScript([OP_DUP, OP_HASH160, key_hash, OP_EQUALVERIFY, OP_CHECKSIG])
 
     @property
-    def keys(self):
+    def keys(self) -> List[DescriptorKey]:
         return [self.pubkey]
 
-    def satisfy(self, signature):
+    def satisfy(self, signature: bytes) -> List[bytes]:
         """Get the witness stack to spend from this descriptor.
 
         :param signature: a signature (in bytes) for the pubkey from the descriptor.

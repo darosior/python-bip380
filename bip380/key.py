@@ -1,12 +1,17 @@
+from __future__ import annotations
+
+from enum import Enum, auto
+from typing import List, Optional, Union
+
 from bip32 import BIP32
 from bip32.utils import coincurve, _deriv_path_str_to_list
+
 from bip380.utils.hashes import hash160
-from enum import Enum, auto
 
 
 class DescriptorKeyError(Exception):
-    def __init__(self, message):
-        self.message = message
+    def __init__(self, message: str):
+        self.message: str = message
 
 
 class DescriporKeyOrigin:
@@ -15,13 +20,13 @@ class DescriporKeyOrigin:
     See https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki#key-expressions.
     """
 
-    def __init__(self, fingerprint, path):
+    def __init__(self, fingerprint: bytes, path: List[int]):
         assert isinstance(fingerprint, bytes) and isinstance(path, list)
 
-        self.fingerprint = fingerprint
-        self.path = path
+        self.fingerprint: bytes = fingerprint
+        self.path: List[int] = path
 
-    def from_str(origin_str):
+    def from_str(origin_str: str) -> DescriporKeyOrigin:
         # Origing starts and ends with brackets
         if not origin_str.startswith("[") or not origin_str.endswith("]"):
             raise DescriptorKeyError(f"Insane origin: '{origin_str}'")
@@ -54,7 +59,7 @@ class KeyPathKind(Enum):
     WILDCARD_UNHARDENED = auto()
     WILDCARD_HARDENED = auto()
 
-    def is_wildcard(self):
+    def is_wildcard(self) -> bool:
         return self in [KeyPathKind.WILDCARD_HARDENED, KeyPathKind.WILDCARD_UNHARDENED]
 
 
@@ -64,13 +69,13 @@ class DescriptorKeyPath:
     See https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki#key-expressions.
     """
 
-    def __init__(self, path, kind):
+    def __init__(self, path: List[int], kind: KeyPathKind):
         assert isinstance(path, list) and isinstance(kind, KeyPathKind)
 
-        self.path = path
-        self.kind = kind
+        self.path: List[int] = path
+        self.kind: KeyPathKind = kind
 
-    def from_str(path_str):
+    def from_str(path_str: str) -> DescriptorKeyPath:
         if len(path_str) < 1:
             raise DescriptorKeyError(f"Insane key path: '{path_str}'")
         if path_str[0] == "/":
@@ -108,7 +113,11 @@ class DescriptorKey:
     May be an extended or raw public key.
     """
 
-    def __init__(self, key):
+    origin: Optional[DescriporKeyOrigin]
+    path: Optional[DescriptorKeyPath]
+    key: Union[coincurve.PublicKey, BIP32]
+
+    def __init__(self, key: Union[bytes, BIP32, str]):
         # Information about the origin of this key.
         self.origin = None
         # If it is an xpub, a path toward a child key of that xpub.
@@ -156,10 +165,10 @@ class DescriptorKey:
                 "Invalid parameter type: expecting bytes, hex str or BIP32 instance."
             )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         key = ""
 
-        def ser_path(key, path):
+        def ser_path(key: str, path: List[int]) -> str:
             for i in path:
                 if i < 2**31:
                     key += f"/{i}"
@@ -185,7 +194,7 @@ class DescriptorKey:
 
         return key
 
-    def bytes(self):
+    def bytes(self) -> bytes:
         if isinstance(self.key, coincurve.PublicKey):
             return self.key.format()
         else:
@@ -195,7 +204,7 @@ class DescriptorKey:
             assert not self.path.kind.is_wildcard()  # TODO: real errors
             return self.key.get_pubkey_from_path(self.path.path)
 
-    def derive(self, index):
+    def derive(self, index: int) -> None:
         """Derive the key at the given index.
 
         A no-op if the key isn't a wildcard. Will start from 2**31 if the key is a "hardened

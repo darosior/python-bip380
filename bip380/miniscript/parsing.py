@@ -2,11 +2,15 @@
 Utilities to parse Miniscript from string and Script representations.
 """
 
-import bip380.miniscript.fragments as fragments
+from __future__ import annotations
 
+from typing import Union, Optional, List, Dict, Tuple
+
+import bip380.miniscript.fragments as fragments
 from bip380.key import DescriptorKey
 from bip380.miniscript.errors import MiniscriptMalformed
 from bip380.utils.script import (
+    CScript,
     CScriptOp,
     OP_ADD,
     OP_BOOLAND,
@@ -40,7 +44,7 @@ from bip380.utils.script import (
 )
 
 
-def stack_item_to_int(item):
+def stack_item_to_int(item: Union[bytes, fragments.Node, int]) -> Optional[int]:
     """
     Convert a stack item to an integer depending on its type.
     May raise an exception if the item is bytes, otherwise return None if it
@@ -61,7 +65,7 @@ def stack_item_to_int(item):
     return None
 
 
-def decompose_script(script):
+def decompose_script(script: CScript) -> List[CScriptOp]:
     """Create a list of Script element from a CScript, decomposing the compact
     -VERIFY opcodes into the non-VERIFY OP and an OP_VERIFY.
     """
@@ -78,7 +82,7 @@ def decompose_script(script):
     return elems
 
 
-def parse_term_single_elem(expr_list, idx):
+def parse_term_single_elem(expr_list: List[CScriptOp], idx: int) -> None:
     """
     Try to parse a terminal node from the element of {expr_list} at {idx}.
     """
@@ -97,7 +101,7 @@ def parse_term_single_elem(expr_list, idx):
         expr_list[idx] = fragments.Just0()
 
 
-def parse_term_2_elems(expr_list, idx):
+def parse_term_2_elems(expr_list: List[CScriptOp], idx: int) -> Optional[List[CScriptOp]]:
     """
     Try to parse a terminal node from two elements of {expr_list}, starting
     from {idx}.
@@ -130,7 +134,11 @@ def parse_term_2_elems(expr_list, idx):
         return expr_list
 
 
-def parse_term_5_elems(expr_list, idx, pkh_preimages={}):
+def parse_term_5_elems(
+        expr_list: List[CScriptOp],
+        idx: int,
+        pkh_preimages: Dict[CScriptOp, Union[bytes, str, DescriptorKey]] = {},
+) -> Optional[List[CScriptOp]]:
     """
     Try to parse a terminal node from five elements of {expr_list}, starting
     from {idx}.
@@ -154,7 +162,7 @@ def parse_term_5_elems(expr_list, idx, pkh_preimages={}):
     return expr_list
 
 
-def parse_term_7_elems(expr_list, idx):
+def parse_term_7_elems(expr_list: List[CScriptOp], idx: int) -> Optional[List[CScriptOp]]:
     """
     Try to parse a terminal node from seven elements of {expr_list}, starting
     from {idx}.
@@ -207,7 +215,10 @@ def parse_term_7_elems(expr_list, idx):
         return expr_list
 
 
-def parse_nonterm_2_elems(expr_list, idx):
+def parse_nonterm_2_elems(
+        expr_list: List[Union[CScriptOp, fragments.Node]],
+        idx: int,
+) -> Optional[List[Union[CScriptOp, fragments.Node]]]:
     """
     Try to parse a non-terminal node from two elements of {expr_list}, starting
     from {idx}.
@@ -252,7 +263,10 @@ def parse_nonterm_2_elems(expr_list, idx):
         return expr_list
 
 
-def parse_nonterm_3_elems(expr_list, idx):
+def parse_nonterm_3_elems(
+        expr_list: List[Union[CScriptOp, fragments.Node]],
+        idx: int,
+) -> Optional[List[Union[CScriptOp, fragments.Node]]]:
     """
     Try to parse a non-terminal node from *at least* three elements of
     {expr_list}, starting from {idx}.
@@ -319,7 +333,10 @@ def parse_nonterm_3_elems(expr_list, idx):
         return expr_list
 
 
-def parse_nonterm_4_elems(expr_list, idx):
+def parse_nonterm_4_elems(
+        expr_list: List[Union[CScriptOp, fragments.Node]],
+        idx: int,
+) -> Optional[List[Union[CScriptOp, fragments.Node]]]:
     """
     Try to parse a non-terminal node from at least four elements of {expr_list},
     starting from {idx}.
@@ -377,7 +394,10 @@ def parse_nonterm_4_elems(expr_list, idx):
         return expr_list
 
 
-def parse_nonterm_5_elems(expr_list, idx):
+def parse_nonterm_5_elems(
+        expr_list: List[Union[CScriptOp, fragments.Node]],
+        idx: int,
+) -> Optional[List[Union[CScriptOp, fragments.Node]]]:
     """
     Try to parse a non-terminal node from five elements of {expr_list}, starting
     from {idx}.
@@ -428,7 +448,10 @@ def parse_nonterm_5_elems(expr_list, idx):
         return expr_list
 
 
-def parse_nonterm_6_elems(expr_list, idx):
+def parse_nonterm_6_elems(
+        expr_list: List[Union[CScriptOp, fragments.Node]],
+        idx: int,
+) -> Optional[List[Union[CScriptOp, fragments.Node]]]:
     """
     Try to parse a non-terminal node from six elements of {expr_list}, starting
     from {idx}.
@@ -456,7 +479,7 @@ def parse_nonterm_6_elems(expr_list, idx):
         return expr_list
 
 
-def parse_expr_list(expr_list):
+def parse_expr_list(expr_list: List[Union[CScriptOp, fragments.Node]]) -> fragments.Node:
     """Parse a node from a list of Script elements."""
     # Every recursive call must progress the AST construction,
     # until it is complete (single root node remains).
@@ -502,8 +525,11 @@ def parse_expr_list(expr_list):
     raise MiniscriptMalformed(f"{expr_list}")
 
 
-def miniscript_from_script(script, pkh_preimages={}):
-    """Construct miniscript node from script.
+def miniscript_from_script(
+        script: CScript,
+        pkh_preimages: Dict[CScriptOp, Union[bytes, str, DescriptorKey]] = {},
+) -> fragments.Node:
+    """Construct miniscript node from script.  # TODO: we return CScriptOp, not a Node?
 
     :param script: The Bitcoin Script to decode.
     :param pkh_preimage: A mapping from keyhash to key to decode pk_h() fragments.
@@ -540,7 +566,7 @@ def miniscript_from_script(script, pkh_preimages={}):
     return parse_expr_list(expr_list)
 
 
-def split_params(string):
+def split_params(string: str) -> Tuple[List[str], str]:
     """Read a list of values before the next ')'. Split the result by comma."""
     i = string.find(")")
     assert i >= 0
@@ -552,7 +578,7 @@ def split_params(string):
         return params.split(","), ""
 
 
-def parse_many(string):
+def parse_many(string: str) -> Optional[Tuple[List[fragments.Node]], str]:
     """Read a list of nodes before the next ')'."""
     subs = []
     remaining = string
@@ -565,7 +591,7 @@ def parse_many(string):
         remaining = remaining[1:]
 
 
-def parse_one_num(string):
+def parse_one_num(string: str) -> int:
     """Read an integer before the next comma."""
     i = string.find(",")
     assert i >= 0
@@ -573,7 +599,7 @@ def parse_one_num(string):
     return int(string[:i]), string[i + 1 :]
 
 
-def parse_one(string):
+def parse_one(string: str) -> Optional[Tuple[fragments.Node, str]]:
     """Read a node and its subs recursively from a string.
     Returns the node and the part of the string not consumed.
     """
@@ -729,7 +755,7 @@ def parse_one(string):
     assert False, (tag, subs, remaining)  # TODO
 
 
-def miniscript_from_str(ms_str):
+def miniscript_from_str(ms_str: str) -> fragments.Node:
     """Construct miniscript node from string representation"""
     node, remaining = parse_one(ms_str)
     assert remaining == ""

@@ -19,10 +19,10 @@ class Property:
     # "n": Nonzero arg property
     # "d": Dissatisfiable property
     # "u": Unit property
-    types = "BVKW"
-    props = "zondu"
+    types: str = "BVKW"
+    props: str = "zondu"
 
-    def __init__(self, property_str=""):
+    def __init__(self, property_str: str = ""):
         """Create a property, optionally from a str of property and types"""
         allowed = self.types + self.props
         invalid = set(property_str).difference(set(allowed))
@@ -38,19 +38,19 @@ class Property:
 
         self.check_valid()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Generate string representation of property"""
         return "".join([c for c in self.types + self.props if getattr(self, c)])
 
-    def has_all(self, properties):
+    def has_all(self, properties: str) -> bool:
         """Given a str of types and properties, return whether we have all of them"""
         return all([getattr(self, pt) for pt in properties])
 
-    def has_any(self, properties):
+    def has_any(self, properties: str) -> bool:
         """Given a str of types and properties, return whether we have at least one of them"""
         return any([getattr(self, pt) for pt in properties])
 
-    def check_valid(self):
+    def check_valid(self) -> None:
         """Raises a MiniscriptPropertyError if the types/properties conflict"""
         # Can only be of a single type.
         if len(self.type()) > 1:
@@ -76,8 +76,8 @@ class Property:
         if conflicts:
             raise MiniscriptPropertyError(f"Conflicting types and properties: {', '.join(conflicts)}")
 
-    def type(self):
+    def type(self) -> str:
         return "".join(filter(lambda x: x in self.types, str(self)))
 
-    def properties(self):
+    def properties(self) -> str:
         return "".join(filter(lambda x: x in self.props, str(self)))

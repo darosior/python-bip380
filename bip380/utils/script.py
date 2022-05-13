@@ -7,10 +7,12 @@
 This file was taken from Bitcoin Core test framework, and was previously
 modified from python-bitcoinlib.
 """
+from __future__ import annotations
+
 import struct
+from typing import Union, List, Generator, Any, Tuple
 
 from .bignum import bn2vch
-
 
 OPCODE_NAMES = {}
 
@@ -21,7 +23,7 @@ class CScriptOp(int):
     __slots__ = ()
 
     @staticmethod
-    def encode_op_pushdata(d):
+    def encode_op_pushdata(d: Union[bytes, bytearray]) -> bytes:
         """Encode a PUSHDATA op, returning bytes"""
         if len(d) < 0x4C:
             return b"" + bytes([len(d)]) + d  # OP_PUSHDATA
@@ -35,7 +37,7 @@ class CScriptOp(int):
             raise ValueError("Data too long to encode in a PUSHDATA op")
 
     @staticmethod
-    def encode_op_n(n):
+    def encode_op_n(n: int) -> CScriptOp:
         """Encode a small integer op, returning an opcode"""
         if not (0 <= n <= 16):
             raise ValueError("Integer must be in range 0 <= n <= 16, got %d" % n)
@@ -45,7 +47,7 @@ class CScriptOp(int):
         else:
             return CScriptOp(OP_1 + n - 1)
 
-    def decode_op_n(self):
+    def decode_op_n(self) -> int:
         """Decode a small integer opcode, returning an integer"""
         if self == OP_0:
             return 0
@@ -55,17 +57,17 @@ class CScriptOp(int):
 
         return int(self - OP_1 + 1)
 
-    def is_small_int(self):
+    def is_small_int(self) -> bool:
         """Return true if the op pushes a small integer to the stack"""
         if 0x51 <= self <= 0x60 or self == 0:
             return True
         else:
             return False
 
-    def __str__(self):
+    def __str__(self) -> str:
         return repr(self)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self in OPCODE_NAMES:
             return OPCODE_NAMES[self]
         else:
@@ -200,11 +202,11 @@ OPCODE_NAMES.update(
 
 
 class ScriptNumError(ValueError):
-    def __init__(self, message):
-        self.message = message
+    def __init__(self, message: str):
+        self.message: str = message
 
 
-def read_script_number(data):
+def read_script_number(data: bytes) -> int:
     """Read a Script number from {data} bytes"""
     size = len(data)
     if size > 4:
@@ -235,20 +237,19 @@ class CScriptInvalidError(Exception):
 class CScriptTruncatedPushDataError(CScriptInvalidError):
     """Invalid pushdata due to truncation"""
 
-    def __init__(self, msg, data):
-        self.data = data
+    def __init__(self, msg: str, data: bytes):
+        self.data: bytes = data
         super(CScriptTruncatedPushDataError, self).__init__(msg)
-
 
 # This is used, eg, for blockchain heights in coinbase scripts (bip34)
 class CScriptNum:
     __slots__ = ("value",)
 
-    def __init__(self, d=0):
-        self.value = d
+    def __init__(self, d: int = 0):
+        self.value: int = d
 
     @staticmethod
-    def encode(obj):
+    def encode(obj: CScriptNum) -> bytes:
         r = bytearray(0)
         if obj.value == 0:
             return bytes(r)
@@ -264,7 +265,7 @@ class CScriptNum:
         return bytes([len(r)]) + r
 
     @staticmethod
-    def decode(vch):
+    def decode(vch: bytes) -> int:
         result = 0
         # We assume valid push_size and minimal encoding
         value = vch[1:]
@@ -294,7 +295,7 @@ class CScript(bytes):
     __slots__ = ()
 
     @classmethod
-    def __coerce_instance(cls, other):
+    def __coerce_instance(cls, other: Union[CScriptOp, CScriptNum, int, bytes, bytearray]) -> bytes:
         # Coerce other into bytes
         if isinstance(other, CScriptOp):
             other = bytes([other])
@@ -314,7 +315,7 @@ class CScript(bytes):
             other = CScriptOp.encode_op_pushdata(other)
         return other
 
-    def __add__(self, other):
+    def __add__(self, other: Union[CScriptOp, CScriptNum, int, bytes, bytearray]) -> "CScript":
         # Do the coercion outside of the try block so that errors in it are
         # noticed.
         other = self.__coerce_instance(other)
@@ -325,16 +326,16 @@ class CScript(bytes):
         except TypeError:
             raise TypeError("Can not add a %r instance to a CScript" % other.__class__)
 
-    def join(self, iterable):
+    def join(self, iterable: List[bytes]) -> bytes:
         # join makes no sense for a CScript()
         raise NotImplementedError
 
-    def __new__(cls, value=b""):
-        if isinstance(value, bytes) or isinstance(value, bytearray):
+    def __new__(cls, value: bytes = b""):
+        if isinstance(value, (bytes, bytearray)):
             return super(CScript, cls).__new__(cls, value)
         else:
 
-            def coerce_iterable(iterable):
+            def coerce_iterable(iterable: bytes) -> Generator[bytes, Any, None]:
                 for instance in iterable:
                     yield cls.__coerce_instance(instance)
 
@@ -342,7 +343,7 @@ class CScript(bytes):
             # returns a bytes instance even when subclassed.
             return super(CScript, cls).__new__(cls, b"".join(coerce_iterable(value)))
 
-    def raw_iter(self):
+    def raw_iter(self) -> Tuple[int, bytes, int]:
         """Raw iteration
 
         Yields tuples of (opcode, data, sop_idx) so that the different possible
@@ -405,7 +406,7 @@ class CScript(bytes):
 
                 yield (opcode, data, sop_idx)
 
-    def __iter__(self):
+    def __iter__(self) -> Union[CScriptOp, int, bytes]:
         """'Cooked' iteration
 
         Returns either a CScriptOP instance, an integer, or bytes, as
@@ -425,8 +426,8 @@ class CScript(bytes):
                 else:
                     yield CScriptOp(opcode)
 
-    def __repr__(self):
-        def _repr(o):
+    def __repr__(self) -> str:
+        def _repr(o: Union[bytes, CScriptOp]) -> str:
             if isinstance(o, bytes):
                 return "x('%s')" % o.hex()
             else:
@@ -452,7 +453,7 @@ class CScript(bytes):
 
         return "CScript([%s])" % ", ".join(ops)
 
-    def GetSigOpCount(self, fAccurate):
+    def GetSigOpCount(self, fAccurate: bool) -> int:
         """Get the SigOp count.
 
         fAccurate - Accurately count CHECKMULTISIG, see BIP16 for details.
