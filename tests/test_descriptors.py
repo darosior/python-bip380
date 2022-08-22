@@ -100,9 +100,9 @@ def test_wpkh_sanity_checks():
     verify_tx(desc, tx, stack, amount)
 
 
-def test_xpub_parsing():
-    """Roundtrip xpubs with various metadata."""
-    xpubs = [
+def test_key_parsing():
+    """Roundtrip keys with various metadata."""
+    keys = [
         "[aabbccdd]xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa",
         "[aabbccdd/0/1'/2]xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa",
         "xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/1'/2",
@@ -115,9 +115,13 @@ def test_xpub_parsing():
         "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/<0;1;9854>/3456/9876/*",
         "[abcdef00/0'/1']tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/<0;1>/*",
         "[abcdef00/0'/1']tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/9478'/<0';1'>/8'/*'",
+        "02cc24adfed5a481b000192042b2399087437d8eb16095c3dda1d45a4fbf868017",
+        "[0011bbdd/534/789'/34]033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a",
+        "cc24adfed5a481b000192042b2399087437d8eb16095c3dda1d45a4fbf868017",
+        "[0011bbdd/534/789'/34]3d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a",
     ]
-    for xpub in xpubs:
-        assert str(DescriptorKey(xpub)) == xpub
+    for key in keys:
+        assert str(DescriptorKey(key)) == key
 
     tpub = DescriptorKey(
         "[abcdef00/0'/1]tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/9478'/<0';1';420>/8'/*'"
