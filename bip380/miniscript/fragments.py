@@ -227,7 +227,6 @@ class PkNode(Node):
         return [self.pubkey]
 
 
-# TODO: A PkNode class to inherit those two from?
 class Pk(PkNode):
     def __init__(self, pubkey):
         PkNode.__init__(self, pubkey)

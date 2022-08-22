@@ -100,7 +100,6 @@ class Satisfaction:
 
         # > Otherwise, all not-DONTUSE options are valid, so return the smallest one (in
         # > terms of witness size).
-        # FIXME: the C++ implem uses number of stack elements
         if self.size() > other.size():
             return other
 
