@@ -10,6 +10,7 @@ from bip380.utils.script import (
 )
 
 from .checksum import descsum_create
+from .errors import DescriptorParsingError
 from .parsing import descriptor_from_str
 
 
@@ -21,7 +22,22 @@ class Descriptor:
 
         :param strict: whether to require the presence of a checksum.
         """
-        return descriptor_from_str(desc_str, strict)
+        desc = descriptor_from_str(desc_str, strict)
+
+        # BIP389 prescribes that no two multipath key expressions in a single descriptor
+        # have different length.
+        multipath_len = None
+        for key in desc.keys:
+            if key.is_multipath():
+                m_len = len(key.path.paths)
+                if multipath_len is None:
+                    multipath_len = m_len
+                elif multipath_len != m_len:
+                    raise DescriptorParsingError(
+                        f"Descriptor contains multipath key expressions with varying length: '{desc_str}'."
+                    )
+
+        return desc
 
     @property
     def script_pubkey(self):
@@ -59,6 +75,41 @@ class Descriptor:
         """
         # To be implemented by derived classes
         raise NotImplementedError
+
+    def copy(self):
+        """Get a copy of this descriptor."""
+        # FIXME: do something nicer than roundtripping through string ser
+        return Descriptor.from_str(str(self))
+
+    def is_multipath(self):
+        """Whether this descriptor contains multipath key expression(s)."""
+        return any(k.is_multipath() for k in self.keys)
+
+    def singlepath_descriptors(self):
+        """Get a list of descriptors that only contain keys that don't have multiple
+        derivation paths.
+        """
+        singlepath_descs = [self.copy()]
+
+        # First figure out the number of descriptors there will be
+        for key in self.keys:
+            if key.is_multipath():
+                singlepath_descs += [self.copy() for _ in range(len(key.path.paths) - 1)]
+                break
+
+        # Return early if there was no multipath key expression
+        if len(singlepath_descs) == 1:
+            return singlepath_descs
+
+        # Then use one path for each
+        for i, desc in enumerate(singlepath_descs):
+            for key in desc.keys:
+                if key.is_multipath():
+                    assert len(key.path.paths) == len(singlepath_descs)
+                    key.path.paths = key.path.paths[i : i + 1]
+
+        assert all(not d.is_multipath() for d in singlepath_descs)
+        return singlepath_descs
 
 
 # TODO: add methods to give access to all the Miniscript analysis
