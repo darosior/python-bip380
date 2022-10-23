@@ -108,6 +108,7 @@ def test_xpub_parsing():
         "xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/1'/2",
         "xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/145/*",
         "[aabbccdd/0/1'/2]xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/1'/2/*",
+        "xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/*'",
     ]
     for xpub in xpubs:
         assert str(DescriptorKey(xpub)) == xpub

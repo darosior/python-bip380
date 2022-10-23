@@ -233,8 +233,10 @@ class DescriptorKey:
 
         if self.path is not None:
             key = ser_paths(key, self.path.paths)
-            if self.path.kind.is_wildcard():
+            if self.path.kind == KeyPathKind.WILDCARD_UNHARDENED:
                 key += "/*"
+            elif self.path.kind == KeyPathKind.WILDCARD_HARDENED:
+                key += "/*'"
 
         return key
 
