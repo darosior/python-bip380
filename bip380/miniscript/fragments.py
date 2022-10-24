@@ -495,12 +495,18 @@ class AndV(Node):
             or self.rel_heightlocks
             and self.rel_timelocks
         )
-        self.exec_info = ExecutionInfo.from_concat(sub_x.exec_info, sub_y.exec_info)
-        self.exec_info.set_undissatisfiable()  # it's V.
 
     @property
     def _script(self):
         return sum((sub._script for sub in self.subs), start=[])
+
+    @property
+    def exec_info(self):
+        exec_info = ExecutionInfo.from_concat(
+            self.subs[0].exec_info, self.subs[1].exec_info
+        )
+        exec_info.set_undissatisfiable()  # it's V.
+        return exec_info
 
     def satisfaction(self, sat_material):
         return Satisfaction.from_concat(sat_material, *self.subs)
@@ -544,13 +550,16 @@ class AndB(Node):
             or self.rel_heightlocks
             and self.rel_timelocks
         )
-        self.exec_info = ExecutionInfo.from_concat(
-            sub_x.exec_info, sub_y.exec_info, ops_count=1
-        )
 
     @property
     def _script(self):
         return sum((sub._script for sub in self.subs), start=[]) + [OP_BOOLAND]
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_concat(
+            self.subs[0].exec_info, self.subs[1].exec_info, ops_count=1
+        )
 
     def satisfaction(self, sat_material):
         return Satisfaction.from_concat(sat_material, self.subs[0], self.subs[1])
@@ -585,13 +594,19 @@ class OrB(Node):
         self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
         self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
         self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
-        self.exec_info = ExecutionInfo.from_concat(
-            sub_x.exec_info, sub_z.exec_info, ops_count=1, disjunction=True
-        )
 
     @property
     def _script(self):
         return sum((sub._script for sub in self.subs), start=[]) + [OP_BOOLOR]
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_concat(
+            self.subs[0].exec_info,
+            self.subs[1].exec_info,
+            ops_count=1,
+            disjunction=True,
+        )
 
     def satisfaction(self, sat_material):
         return Satisfaction.from_concat(
@@ -629,14 +644,17 @@ class OrC(Node):
         self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
         self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
         self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
-        self.exec_info = ExecutionInfo.from_or_uneven(
-            sub_x.exec_info, sub_z.exec_info, ops_count=2
-        )
-        self.exec_info.set_undissatisfiable()  # it's V.
 
     @property
     def _script(self):
         return self.subs[0]._script + [OP_NOTIF] + self.subs[1]._script + [OP_ENDIF]
+
+    @property
+    def exec_info(self):
+        exec_info = ExecutionInfo.from_or_uneven(
+            self.subs[0].exec_info, self.subs[1].exec_info, ops_count=2
+        )
+        return exec_info.set_undissatisfiable()  # it's V.
 
     def satisfaction(self, sat_material):
         return Satisfaction.from_or_uneven(sat_material, self.subs[0], self.subs[1])
@@ -675,9 +693,6 @@ class OrD(Node):
         self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
         self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
         self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
-        self.exec_info = ExecutionInfo.from_or_uneven(
-            sub_x.exec_info, sub_z.exec_info, ops_count=3
-        )
 
     @property
     def _script(self):
@@ -686,6 +701,12 @@ class OrD(Node):
             + [OP_IFDUP, OP_NOTIF]
             + self.subs[1]._script
             + [OP_ENDIF]
+        )
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_or_uneven(
+            self.subs[0].exec_info, self.subs[1].exec_info, ops_count=3
         )
 
     def satisfaction(self, sat_material):
@@ -726,9 +747,6 @@ class OrI(Node):
         self.abs_timelocks = any(sub.abs_timelocks for sub in self.subs)
         self.rel_timelocks = any(sub.rel_timelocks for sub in self.subs)
         self.no_timelock_mix = all(sub.no_timelock_mix for sub in self.subs)
-        self.exec_info = ExecutionInfo.from_or_even(
-            sub_x.exec_info, sub_z.exec_info, ops_count=3
-        )
 
     @property
     def _script(self):
@@ -738,6 +756,12 @@ class OrI(Node):
             + [OP_ELSE]
             + self.subs[1]._script
             + [OP_ENDIF]
+        )
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_or_even(
+            self.subs[0].exec_info, self.subs[1].exec_info, ops_count=3
         )
 
     def satisfaction(self, sat_material):
@@ -801,9 +825,6 @@ class AndOr(Node):
             or any(sub.abs_timelocks for sub in [sub_x, sub_y])
             and any(sub.abs_heightlocks for sub in [sub_x, sub_y])
         )
-        self.exec_info = ExecutionInfo.from_andor_uneven(
-            sub_x.exec_info, sub_y.exec_info, sub_z.exec_info, ops_count=3
-        )
 
     @property
     def _script(self):
@@ -814,6 +835,15 @@ class AndOr(Node):
             + [OP_ELSE]
             + self.subs[1]._script
             + [OP_ENDIF]
+        )
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_andor_uneven(
+            self.subs[0].exec_info,
+            self.subs[1].exec_info,
+            self.subs[2].exec_info,
+            ops_count=3,
         )
 
     def satisfaction(self, sat_material):
@@ -898,7 +928,6 @@ class Thresh(Node):
                 or self.rel_heightlocks
                 and self.rel_timelocks
             )
-        self.exec_info = ExecutionInfo.from_thresh(k, [sub.exec_info for sub in subs])
 
     @property
     def _script(self):
@@ -907,6 +936,10 @@ class Thresh(Node):
             + sum(((sub._script + [OP_ADD]) for sub in self.subs[1:]), start=[])
             + [self.k, OP_EQUAL]
         )
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_thresh(self.k, [sub.exec_info for sub in self.subs])
 
     def satisfaction(self, sat_material):
         return Satisfaction.from_thresh(sat_material, self.k, self.subs)
@@ -974,11 +1007,14 @@ class WrapA(WrapperNode):
         WrapperNode.__init__(self, sub)
 
         self.p = Property("W" + "".join(c for c in "ud" if getattr(sub.p, c)))
-        self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=2)
 
     @property
     def _script(self):
         return [OP_TOALTSTACK] + self.sub._script + [OP_FROMALTSTACK]
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_wrap(self.sub.exec_info, ops_count=2)
 
     def __repr__(self):
         # Don't duplicate colons
@@ -993,11 +1029,14 @@ class WrapS(WrapperNode):
         WrapperNode.__init__(self, sub)
 
         self.p = Property("W" + "".join(c for c in "ud" if getattr(sub.p, c)))
-        self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
 
     @property
     def _script(self):
         return [OP_SWAP] + self.sub._script
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_wrap(self.sub.exec_info, ops_count=1)
 
     def __repr__(self):
         # Avoid duplicating colons
@@ -1013,14 +1052,15 @@ class WrapC(WrapperNode):
 
         # FIXME: shouldn't n and d be default props on the website?
         self.p = Property("Bu" + "".join(c for c in "dno" if getattr(sub.p, c)))
-        # FIXME: should need_sig be set to True here instead of in keys?
-        self.exec_info = ExecutionInfo.from_wrap(
-            sub.exec_info, ops_count=1, sat=1, dissat=1
-        )
 
     @property
     def _script(self):
         return self.sub._script + [OP_CHECKSIG]
+
+    @property
+    def exec_info(self):
+        # FIXME: should need_sig be set to True here instead of in keys?
+        return ExecutionInfo.from_wrap(self.sub.exec_info, ops_count=1, sat=1, dissat=1)
 
     def __repr__(self):
         # Special case of aliases
@@ -1056,13 +1096,16 @@ class WrapD(WrapperNode):
         self.p = Property("Bond")
         self.is_forced = True  # sub is V
         self.is_expressive = True  # sub is V, and we add a single dissat
-        self.exec_info = ExecutionInfo.from_wrap_dissat(
-            sub.exec_info, ops_count=3, sat=1, dissat=1
-        )
 
     @property
     def _script(self):
         return [OP_DUP, OP_IF] + self.sub._script + [OP_ENDIF]
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_wrap_dissat(
+            self.sub.exec_info, ops_count=3, sat=1, dissat=1
+        )
 
     def satisfaction(self, sat_material):
         return Satisfaction(witness=[b"\x01"]) + self.subs[0].satisfaction(sat_material)
@@ -1085,8 +1128,6 @@ class WrapV(WrapperNode):
         self.p = Property("V" + "".join(c for c in "zon" if getattr(sub.p, c)))
         self.is_forced = True  # V
         self.is_expressive = False  # V
-        verify_cost = int(self._script[-1] == OP_VERIFY)
-        self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=verify_cost)
 
     @property
     def _script(self):
@@ -1097,6 +1138,11 @@ class WrapV(WrapperNode):
         elif self.sub._script[-1] == OP_EQUAL:
             return self.sub._script[:-1] + [OP_EQUALVERIFY]
         return self.sub._script + [OP_VERIFY]
+
+    @property
+    def exec_info(self):
+        verify_cost = int(self._script[-1] == OP_VERIFY)
+        return ExecutionInfo.from_wrap(self.sub.exec_info, ops_count=verify_cost)
 
     def dissatisfaction(self):
         return Satisfaction.unavailable()  # It's V.
@@ -1116,13 +1162,14 @@ class WrapJ(WrapperNode):
         self.p = Property("Bnd" + "".join(c for c in "ou" if getattr(sub.p, c)))
         self.is_forced = False  # d
         self.is_expressive = sub.is_forced
-        self.exec_info = ExecutionInfo.from_wrap_dissat(
-            sub.exec_info, ops_count=4, dissat=1
-        )
 
     @property
     def _script(self):
         return [OP_SIZE, OP_0NOTEQUAL, OP_IF, *self.sub._script, OP_ENDIF]
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_wrap_dissat(self.sub.exec_info, ops_count=4, dissat=1)
 
     def dissatisfaction(self):
         return Satisfaction(witness=[b""])
@@ -1140,11 +1187,14 @@ class WrapN(WrapperNode):
         WrapperNode.__init__(self, sub)
 
         self.p = Property("Bu" + "".join(c for c in "zond" if getattr(sub.p, c)))
-        self.exec_info = ExecutionInfo.from_wrap(sub.exec_info, ops_count=1)
 
     @property
     def _script(self):
         return [*self.sub._script, OP_0NOTEQUAL]
+
+    @property
+    def exec_info(self):
+        return ExecutionInfo.from_wrap(self.sub.exec_info, ops_count=1)
 
     def __repr__(self):
         # Avoid duplicating colons

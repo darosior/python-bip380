@@ -2,7 +2,7 @@ import coincurve
 import os
 import pytest
 
-from bip32 import BIP32
+from bip32 import BIP32, HARDENED_INDEX
 from bitcointx.core import (
     CMutableTxIn,
     CMutableTxOut,
@@ -20,7 +20,7 @@ from bitcointx.core.script import (
     SIGVERSION_WITNESS_V0,
 )
 from bip380.descriptors import Descriptor
-from bip380.key import DescriptorKey, KeyPathKind
+from bip380.key import DescriptorKey, KeyPathKind, DescriptorKeyError
 from bip380.miniscript import SatisfactionMaterial
 from bip380.descriptors.errors import DescriptorParsingError
 from bip380.utils.hashes import sha256
@@ -108,9 +108,59 @@ def test_xpub_parsing():
         "xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/1'/2",
         "xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/145/*",
         "[aabbccdd/0/1'/2]xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/1'/2/*",
+        "xpub661MyMwAqRbcGC7awXn2f36qPMLE2x42cQM5qHrSRg3Q8X7qbDEG1aKS4XAA1PcWTZn7c4Y2WJKCvcivjpZBXTo8fpCRrxtmNKW4H1rpACa/*'",
+        "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/<0;1;42;9854>",
+        "[aabbccdd/0/1'/2]tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/<0;1;42;9854>",
+        "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/<0;1;9854>/0/5/10",
+        "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/<0;1;9854>/3456/9876/*",
+        "[abcdef00/0'/1']tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/<0;1>/*",
+        "[abcdef00/0'/1']tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/9478'/<0';1'>/8'/*'",
     ]
     for xpub in xpubs:
         assert str(DescriptorKey(xpub)) == xpub
+
+    tpub = DescriptorKey(
+        "[abcdef00/0'/1]tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/9478'/<0';1';420>/8'/*'"
+    )
+    assert tpub.path.paths == [
+        [9478 + HARDENED_INDEX, 0 + HARDENED_INDEX, 8 + HARDENED_INDEX],
+        [9478 + HARDENED_INDEX, 1 + HARDENED_INDEX, 8 + HARDENED_INDEX],
+        [9478 + HARDENED_INDEX, 420, 8 + HARDENED_INDEX],
+    ]
+    assert tpub.path.kind == KeyPathKind.WILDCARD_HARDENED
+    assert tpub.origin.fingerprint == bytes.fromhex("abcdef00")
+    assert tpub.origin.path == [0 + HARDENED_INDEX, 1]
+
+    with pytest.raises(DescriptorKeyError, match="Invalid derivation index"):
+        DescriptorKey(
+            "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/<0;1;42;9854"
+        )
+    with pytest.raises(DescriptorKeyError, match="Invalid derivation index"):
+        DescriptorKey(
+            "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/0;1;42;9854>"
+        )
+    with pytest.raises(
+        DescriptorKeyError, match="May only have a single multipath step"
+    ):
+        DescriptorKey(
+            "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/4/<0;1>/96/<0;1>"
+        )
+    with pytest.raises(DescriptorKeyError, match="Invalid derivation index"):
+        DescriptorKey(
+            "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/4/<0>"
+        )
+    with pytest.raises(DescriptorKeyError, match="Invalid derivation index"):
+        DescriptorKey(
+            "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/4/<0;>"
+        )
+    with pytest.raises(DescriptorKeyError, match="Invalid derivation index"):
+        DescriptorKey(
+            "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/4/<;1>"
+        )
+    with pytest.raises(DescriptorKeyError, match="Invalid derivation index"):
+        DescriptorKey(
+            "tpubDBrgjcxBxnXyL575sHdkpKohWu5qHKoQ7TJXKNrYznh5fVEGBv89hA8ENW7A8MFVpFUSvgLqc4Nj1WZcpePX6rrxviVtPowvMuGF5rdT2Vi/2/4/<0;1;>"
+        )
 
 
 def test_descriptor_parsing():
@@ -187,12 +237,12 @@ def test_descriptor_parsing():
     desc = Descriptor.from_str(
         "wpkh([00aabbcc/1]xpub6BsJ4SAX3CYhcZVV9bFVvmGJ7cyboy4LJqbRJJEziPvm9Pq7v7cWkBAa1LixG9vJybxHDuWcHTtq3K4tsaKG1jMJcpZmkiacFuc7LkzUCWu/*)"
     )
-    assert desc.keys[0].path.path == []
+    assert desc.keys[0].path.paths == [[]]
     assert desc.keys[0].path.kind == KeyPathKind.WILDCARD_UNHARDENED
     desc = Descriptor.from_str(
         "wpkh([00aabbcc/1]xpub6BsJ4SAX3CYhcZVV9bFVvmGJ7cyboy4LJqbRJJEziPvm9Pq7v7cWkBAa1LixG9vJybxHDuWcHTtq3K4tsaKG1jMJcpZmkiacFuc7LkzUCWu/0/2/3242/5H/2'/*h)"
     )
-    assert desc.keys[0].path.path == [0, 2, 3242, 5 + 2 ** 31, 2 + 2 ** 31]
+    assert desc.keys[0].path.paths == [[0, 2, 3242, 5 + 2 ** 31, 2 + 2 ** 31]]
     assert desc.keys[0].path.kind == KeyPathKind.WILDCARD_HARDENED
 
     # Multiple origins
@@ -266,25 +316,108 @@ def test_descriptor_parsing():
     assert str(desc2) == str(desc)
 
     # Test against a Revault deposit descriptor using rust-miniscript
-    xpub = BIP32.from_xpub("tpubD6NzVbkrYhZ4YgUwLbJjHAo4khrBPHJfZ1nzeeWxaTpYHzvM7SaEFLnuWjcRt8aM3LicBzeqVcN4fKsbTzHSkUJn388HSc5Xxpd1tPSmDYQ")
-    assert xpub.get_pubkey_from_path([0]).hex() == "02cc24adfed5a481b000192042b2399087437d8eb16095c3dda1d45a4fbf868017"
+    xpub = BIP32.from_xpub(
+        "tpubD6NzVbkrYhZ4YgUwLbJjHAo4khrBPHJfZ1nzeeWxaTpYHzvM7SaEFLnuWjcRt8aM3LicBzeqVcN4fKsbTzHSkUJn388HSc5Xxpd1tPSmDYQ"
+    )
+    assert (
+        xpub.get_pubkey_from_path([0]).hex()
+        == "02cc24adfed5a481b000192042b2399087437d8eb16095c3dda1d45a4fbf868017"
+    )
     desc_str = "wsh(multi(5,tpubD6NzVbkrYhZ4YgUwLbJjHAo4khrBPHJfZ1nzeeWxaTpYHzvM7SaEFLnuWjcRt8aM3LicBzeqVcN4fKsbTzHSkUJn388HSc5Xxpd1tPSmDYQ/*,tpubD6NzVbkrYhZ4X9w1pgeFqiDm7o4dkvEku1ibW6frK5n3vWsSGjxoo3DESgwwZW5N8eN72vCywJzmbezhQQHMbpUytZcxYYTAEaQzUntBEtP/*,tpubD6NzVbkrYhZ4X2M619JZbwnPoQ65e5qzosWPtXYMnMtevcQTwVHq6HFbu5whCAp4PpynzrE65MXk2kgqUb22aE2V5NPZJautw8vXDmVMGuz/*,tpubD6NzVbkrYhZ4YNHo23GAaYnfs8xzyhxpaWZsHJ72a9RPwiQd36BtyHnpRSQFYAJMLK2tWb6i7QJcjNuko4b4V3kGyhe6Z4TxZGXJfEvTU12/*,tpubD6NzVbkrYhZ4YdMUbJuBi6mhtYAC53MevdrFtpQicPavbnYDni6YsAD62NUhQxHYYJpAniVk4Ba9Q2GiptSZPz8ugbo3zgecm2aXQRFny4a/*))#339j7vh3"
     rust_bitcoin_desc_str = "wsh(multi(5,[7fba6fe6/0]02cc24adfed5a481b000192042b2399087437d8eb16095c3dda1d45a4fbf868017,[d7724f76/0]039b2b68caf451ba88afe617cb57f2e9840511bedb0ac8ffa2dc2b25d4ea84adf1,[0c39ed43/0]03f7c1d37ff5dfd5a8b5326533810cef71f7f724fd53d2a88f49e3c63edc5f9688,[e69af179/0]0296209843f0f4dd7b1f3a072e72e7b4edd2e3ff416afc862a7a7aa0b9d40d2de6,[e42852b6/0]03427930b60ba45aeb5c7e03fc3b6b7b22637bec5d355c55204678d7dd8a029981))#vatx0fxr"
     desc = Descriptor.from_str(desc_str)
+    assert str(desc) == desc_str
     desc.derive(0)
     # In the string representation they would use raw keys. Do the same for asserting.
     for key in desc.keys:
         key.key = coincurve.PublicKey(key.key.pubkey)
+    print(desc)
     assert str(desc) == str(rust_bitcoin_desc_str)
 
     # Same, but to check that the Script is actually being derived too...
     desc_str = "wsh(multi(5,tpubD6NzVbkrYhZ4Yb5yyh2qqUnfGzyakvyzYei3qf2roEMuP7DFB47CDhcUW93YjFGGpwXgUbjeFfoapYyXyyUD2cT1tTzdBCMAhsNTmEJxLM2/*,tpubD6NzVbkrYhZ4Wn1byYeaSwqq6aHni5hQmzHmha8WUgQFH7H5mQ4NZXM8dTs52kqsaxFuau7edrm27ZXNbyp6V5vRJxLZ9oxB92F1dVVAnTn/*,tpubD6NzVbkrYhZ4XLQ56KtSZs1ezkUfD2f1QsUPRvVRqmoo1xsJ9DM6Yao4XKqkEDxGHenroWaooEbpjDTzr7W2LB5CYVPn83eacD1swW38W5G/*,tpubD6NzVbkrYhZ4Ys7ii3MvAhZVowvQRPHwT9uctEnxEmnXR7KtBqyEofT6LmvXov5tpMLDcMhNCC3pi4NrLq1vG51rPcsFGtP5MDHq2F9Bj5Z/*,tpubD6NzVbkrYhZ4WmzxsFZByU1tKop9SWd5YHH81b2gbT5ycGAkZfthcwNAcQZmxswzTvpjBaswKgbcEKksbkGW65wbQsA4DEaCq9c7SqUZ9oi/*))#p26mhq70, deriv index 0, desc wsh(multi(5,[838f8104/0]02de76d54f7e28d731f403f5d1fad4da1df208e1d6e00dbe6dfbadd804461c2743,[24e59fd4/0]02f65c2812d2a8d1da479d0cf32d4ca717263bcdadd4b3f11a014b8cc27f73ec44,[cf0b5330/0]024bf97e1bfc4b5c1de90172d50d92fe072da40a8ccd0f89cd5e858b9dc1226623,[cecf756b/0]023bdc599713ea7b982dc3f439aad24f6c6c8b1a4617f339ba976a48d9067a7d67,[04458729/0]0245cca25b3ecea1a82157bc98b9c35caa53d0f65b9ecb5bfdbb80749d22357c45))#h88gukn3"
-    desc = Descriptor.from_str(desc_str)
-    desc.derive(0)
-    assert desc.script_pubkey != Descriptor.from_str(desc_str).script_pubkey
-    assert desc.script_pubkey.hex() == "002076fb586cb821ac94fbe094e012b93d82cc42925bcf543415416f42aa3ba1822c"
-    assert desc.witness_script.script.hex() == "552102de76d54f7e28d731f403f5d1fad4da1df208e1d6e00dbe6dfbadd804461c27432102f65c2812d2a8d1da479d0cf32d4ca717263bcdadd4b3f11a014b8cc27f73ec4421024bf97e1bfc4b5c1de90172d50d92fe072da40a8ccd0f89cd5e858b9dc122662321023bdc599713ea7b982dc3f439aad24f6c6c8b1a4617f339ba976a48d9067a7d67210245cca25b3ecea1a82157bc98b9c35caa53d0f65b9ecb5bfdbb80749d22357c4555ae"
+    desc_a = Descriptor.from_str(desc_str)
+    desc_a.derive(0)
+    desc_b = Descriptor.from_str(desc_str)
+    desc_b.derive(1)
+    assert desc_a.script_pubkey != desc_b.script_pubkey
+    assert (
+        desc_a.script_pubkey.hex()
+        == "002076fb586cb821ac94fbe094e012b93d82cc42925bcf543415416f42aa3ba1822c"
+    )
+    assert (
+        desc_a.witness_script.script.hex()
+        == "552102de76d54f7e28d731f403f5d1fad4da1df208e1d6e00dbe6dfbadd804461c27432102f65c2812d2a8d1da479d0cf32d4ca717263bcdadd4b3f11a014b8cc27f73ec4421024bf97e1bfc4b5c1de90172d50d92fe072da40a8ccd0f89cd5e858b9dc122662321023bdc599713ea7b982dc3f439aad24f6c6c8b1a4617f339ba976a48d9067a7d67210245cca25b3ecea1a82157bc98b9c35caa53d0f65b9ecb5bfdbb80749d22357c4555ae"
+    )
 
     # An Unvault descriptor from Revault
     desc_str = "wsh(andor(thresh(1,pk(tpubD6NzVbkrYhZ4Wu1wWF6gEL8tAZvATeGodn1ymPeC3eo9XGdj6fats9QdMG88KZ23FjV4SyTn5LAHLLwRmor4n6yWBH5ccJLnj7LWcuyPuDQ/*)),and_v(v:multi(2,0227cb9432f93edc3ba82ca70c75bda335553a999e6ab885bc337fcb837aa18f4a,02ed00f0a17f220c7b2179ab9610ea2cccaf290c0f726ce472ab959b2528d2b9de),older(9990)),thresh(2,pkh(tpubD6NzVbkrYhZ4Y1KSo5w1yFPreF7THiygs775SRLyMKJZ8ACgtkLJPNb9UiDk4L4MJuYPsdViWfY65tteiub51YZtqjjv6kLKdKH5WSdH7Br/*),a:pkh(tpubD6NzVbkrYhZ4Xhspiqm3eot2TddA2XmcPmqHyRftxFaKkZWuePH4RXw3Af6CpPfnhRBKPjz7TveUGi91EXTph5V7qHYJ4ijG3NtCjrCKPRH/*))))#se46h9uw"
     Descriptor.from_str(desc_str)
+
+    # We can parse a multipath descriptors, and make it into separate single-path descriptors.
+    multipath_desc = Descriptor.from_str(
+        "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/<7';8h;20>/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/4567/<0;1;987>/*)))"
+    )
+    assert multipath_desc.is_multipath()
+    single_path_descs = multipath_desc.singlepath_descriptors()
+    assert [str(d) for d in single_path_descs] == [
+        str(
+            Descriptor.from_str(
+                "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/7'/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/4567/0/*)))"
+            )
+        ),
+        str(
+            Descriptor.from_str(
+                "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/8h/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/4567/1/*)))"
+            )
+        ),
+        str(
+            Descriptor.from_str(
+                "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/20/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/4567/987/*)))"
+            )
+        ),
+    ]
+
+    # Minisafe descriptor
+    Descriptor.from_str("wsh(or_d(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/<0;1>/*),and_v(v:pkh(tpubD9vQiBdDxYzU4cVFtApWj4devZrvcfWaPXX1zHdDc7GPfUsDKqGnbhraccfm7BAXgRgUbVQUV2v2o4NitjGEk7hpbuP85kvBrD4ahFDtNBJ/<0;1>/*),older(65000))))")
+
+    # Even if only one of the keys is multipath
+    multipath_desc = Descriptor.from_str(
+        "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/<0;1>/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/4567/*)))"
+    )
+    assert multipath_desc.is_multipath()
+    single_path_descs = multipath_desc.singlepath_descriptors()
+    assert [str(d) for d in single_path_descs] == [
+        str(
+            Descriptor.from_str(
+                "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/0/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/4567/*)))"
+            )
+        ),
+        str(
+            Descriptor.from_str(
+                "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/1/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/4567/*)))"
+            )
+        ),
+    ]
+
+    # We can detect regular singlepath descs
+    desc = Descriptor.from_str(
+        "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/4567/*)))"
+    )
+    assert not desc.is_multipath()
+
+    # We refuse to parse descriptor with multipath key expressions of varying length
+    with pytest.raises(
+        DescriptorParsingError,
+        match="Descriptor contains multipath key expressions with varying length",
+    ):
+        Descriptor.from_str(
+            "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/<0;1>/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/<0;1;2;3;4>/*)))"
+        )
+    with pytest.raises(
+        DescriptorParsingError,
+        match="Descriptor contains multipath key expressions with varying length",
+    ):
+        Descriptor.from_str(
+            "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/<0;1;2;3>/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/<0;1;2>/*)))"
+        )
