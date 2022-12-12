@@ -47,4 +47,11 @@ def descriptor_from_str(desc_str, strict=False):
             raise DescriptorParsingError(str(e))
         return descriptors.WpkhDescriptor(pubkey)
 
+    if desc_str.startswith("tr(") and desc_str.endswith(")"):
+        try:
+            pubkey = DescriptorKey(desc_str[3:-1], x_only=True)
+        except DescriptorKeyError as e:
+            raise DescriptorParsingError(str(e))
+        return descriptors.TrDescriptor(pubkey)
+
     raise DescriptorParsingError(f"Unknown descriptor fragment: {desc_str}")

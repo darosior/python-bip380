@@ -335,7 +335,6 @@ def test_descriptor_parsing():
     # In the string representation they would use raw keys. Do the same for asserting.
     for key in desc.keys:
         key.key = coincurve.PublicKey(key.key.pubkey)
-    print(desc)
     assert str(desc) == str(rust_bitcoin_desc_str)
 
     # Same, but to check that the Script is actually being derived too...
@@ -383,7 +382,9 @@ def test_descriptor_parsing():
     ]
 
     # Minisafe descriptor
-    Descriptor.from_str("wsh(or_d(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/<0;1>/*),and_v(v:pkh(tpubD9vQiBdDxYzU4cVFtApWj4devZrvcfWaPXX1zHdDc7GPfUsDKqGnbhraccfm7BAXgRgUbVQUV2v2o4NitjGEk7hpbuP85kvBrD4ahFDtNBJ/<0;1>/*),older(65000))))")
+    Descriptor.from_str(
+        "wsh(or_d(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/<0;1>/*),and_v(v:pkh(tpubD9vQiBdDxYzU4cVFtApWj4devZrvcfWaPXX1zHdDc7GPfUsDKqGnbhraccfm7BAXgRgUbVQUV2v2o4NitjGEk7hpbuP85kvBrD4ahFDtNBJ/<0;1>/*),older(65000))))"
+    )
 
     # Even if only one of the keys is multipath
     multipath_desc = Descriptor.from_str(
@@ -425,3 +426,36 @@ def test_descriptor_parsing():
         Descriptor.from_str(
             "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/<0;1;2;3>/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/<0;1;2>/*)))"
         )
+
+
+def test_taproot_descriptors():
+    def sanity_check_spk(desc_str, spk_hex):
+        desc = Descriptor.from_str(desc_str)
+        assert desc.script_pubkey.hex() == spk_hex
+
+    # Taken from Bitcoin Core unit tests.
+    sanity_check_spk(
+        "tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
+        "512077aab6e066f8a7419c5ab714c12c67d25007ed55a43cadcacb4d7a970a093f11"
+    )
+    # Taken from rust-miniscript unit tests.
+    sanity_check_spk(
+        "tr(02e20e746af365e86647826397ba1c0e0d5cb685752976fe2f326ab76bdc4d6ee9)",
+        "51209c19294f03757da3dc235a5960631e3c55751632f5889b06b7a053bdc0bcfbcb"
+    )
+
+    # Works for derived keys too. Taken and adapted from rust-miniscript unit tests.
+    desc = Descriptor.from_str(
+        "tr(xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ/0/*)"
+    )
+    desc.derive(0)
+    assert (
+        str(desc)
+        == "tr([a7bea80d/0]xpub6H3W6JmYJXN49h5TfcVjLC3onS6uPeUTTJoVvRC8oG9vsTn2J8LwigLzq5tHbrwAzH9DGo6ThGUdWsqce8dGfwHVBxSbixjDADGGdzF7t2B)#dx6zghxv"
+    )
+    for key in desc.keys:
+        key.key = coincurve.PublicKeyXOnly(key.key.pubkey[1:])
+    assert (
+        str(desc)
+        == "tr([a7bea80d/0]cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115)#26vl7d0e"
+    )
