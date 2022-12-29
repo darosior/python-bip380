@@ -69,6 +69,10 @@ def verify_tx(descriptor, tx, witness_stack, amount):
     )
 
 
+def roundtrip_desc(desc_str):
+    assert str(Descriptor.from_str(desc_str)) == desc_str
+
+
 def test_wsh_sanity_checks():
     """Sanity check we can parse a wsh descriptor and satisfy it."""
     hd = BIP32.from_seed(os.urandom(32))
@@ -436,12 +440,18 @@ def test_taproot_descriptors():
     # Taken from Bitcoin Core unit tests.
     sanity_check_spk(
         "tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)",
-        "512077aab6e066f8a7419c5ab714c12c67d25007ed55a43cadcacb4d7a970a093f11"
+        "512077aab6e066f8a7419c5ab714c12c67d25007ed55a43cadcacb4d7a970a093f11",
+    )
+    roundtrip_desc(
+        "tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)#dh4fyxrd"
     )
     # Taken from rust-miniscript unit tests.
     sanity_check_spk(
         "tr(02e20e746af365e86647826397ba1c0e0d5cb685752976fe2f326ab76bdc4d6ee9)",
-        "51209c19294f03757da3dc235a5960631e3c55751632f5889b06b7a053bdc0bcfbcb"
+        "51209c19294f03757da3dc235a5960631e3c55751632f5889b06b7a053bdc0bcfbcb",
+    )
+    roundtrip_desc(
+        "tr(02e20e746af365e86647826397ba1c0e0d5cb685752976fe2f326ab76bdc4d6ee9)#f7yg99rk"
     )
 
     # Works for derived keys too. Taken and adapted from rust-miniscript unit tests.

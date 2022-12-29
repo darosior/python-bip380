@@ -157,13 +157,18 @@ class DescriptorKey:
         self.path = None
         # Whether to only create x-only public keys.
         self.x_only = x_only
+        # Whether to serialize to string representation without the sign byte.
+        # This is necessary to roundtrip 33-bytes keys under Taproot context.
+        self.ser_x_only = x_only
 
         if isinstance(key, bytes):
             if len(key) == 32:
                 key_cls = coincurve.PublicKeyXOnly
                 self.x_only = True
+                self.ser_x_only = True
             elif len(key) == 33:
                 key_cls = coincurve.PublicKey
+                self.ser_x_only = False
             else:
                 raise DescriptorKeyError(
                     "Only compressed and x-only keys are supported"
@@ -189,6 +194,9 @@ class DescriptorKey:
                 if len(key) == 64:
                     pk_cls = coincurve.PublicKeyXOnly
                     self.x_only = True
+                    self.ser_x_only = True
+                else:
+                    self.ser_x_only = False
                 try:
                     self.key = pk_cls(bytes.fromhex(key))
                 except ValueError as e:
@@ -247,7 +255,10 @@ class DescriptorKey:
             key += self.key.get_xpub()
         else:
             assert is_raw_key(self.key)
-            key += self.bytes().hex()
+            raw_key = self.key.format()
+            if len(raw_key) == 33 and self.ser_x_only:
+                raw_key = raw_key[1:]
+            key += raw_key.hex()
 
         if self.path is not None:
             key = ser_paths(key, self.path.paths)
