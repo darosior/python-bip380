@@ -25,6 +25,35 @@ def max_optional(a, b):
     return max(a, b)
 
 
+class ThreshSubsInfo:
+    """Information about a thresh fragment's sub-fragments."""
+
+    def __init__(self, subs, sat_material):
+        # Fragments that cannot be satisfied with the given material.
+        self.unsatisfiable = []
+        # Fragments that cannot be dis-satisfied with the given material.
+        self.undissatisfiable = []
+        # The fragments that are both satisfiable and dis-satisfiable with
+        # the given material, along with whether they require a signature and
+        # the difference in size between their satisfaction and dis-satisfaction.
+        # These are stored inside the list so that it may be sorted to prefer
+        # satisfying fragments that don't require a signature and have a smaller
+        # satisfaction.
+        self.available = []
+
+        self.available, self.unsatisfiable, self.undissatisfiable = [], [], []
+        for sub in subs:
+            sat, dissat = sub.satisfaction(sat_material), sub.dissatisfaction()
+            if sat.witness is None:
+                self.unsatisfiable.append(sub)
+            elif dissat.witness is None:
+                self.undissatisfiable.append(sub)
+            else:
+                self.available.append(
+                    (int(sat.has_sig), len(sat.witness) - len(dissat.witness), sub)
+                )
+
+
 class SatisfactionMaterial:
     """Data that may be needed in order to satisfy a Minsicript fragment."""
 
@@ -59,14 +88,11 @@ class SatisfactionMaterial:
 class Satisfaction:
     """All information about a satisfaction."""
 
-    def __init__(self, witness, has_sig=False):
+    def __init__(self, witness, has_sig=False, non_canon=False):
         assert isinstance(witness, list) or witness is None
         self.witness = witness
         self.has_sig = has_sig
-        # TODO: we probably need to take into account non-canon sats, as the algorithm
-        # described on the website mandates it:
-        # > Iterate over all the valid satisfactions/dissatisfactions in the table above
-        # > (including the non-canonical ones),
+        self.non_canon = non_canon
 
     def __add__(self, other):
         """Concatenate two satisfactions together."""
@@ -114,6 +140,10 @@ class Satisfaction:
     def is_unavailable(self):
         return self.witness is None
 
+    def set_non_canon(self):
+        self.non_canon = True
+        return self
+
     def size(self):
         return len(self.witness) + sum(len(elem) for elem in self.witness)
 
@@ -126,8 +156,12 @@ class Satisfaction:
         :param disjunction: Whether this fragment has an 'or()' semantic.
         """
         if disjunction:
-            return (sub_b.dissatisfaction() + sub_a.satisfaction(sat_material)) | (
-                sub_b.satisfaction(sat_material) + sub_a.dissatisfaction()
+            return (
+                (sub_b.dissatisfaction() + sub_a.satisfaction(sat_material))
+                | (sub_b.satisfaction(sat_material) + sub_a.dissatisfaction())
+                | (
+                    sub_b.satisfaction(sat_material) + sub_a.satisfaction(sat_material)
+                ).set_non_canon()
             )
         return sub_b.satisfaction(sat_material) + sub_a.satisfaction(sat_material)
 
@@ -150,29 +184,22 @@ class Satisfaction:
         :param k: The number of subs that need to be satisfied.
         :param subs: The list of all subs of the threshold.
         """
-        # Pick the k sub-fragments to satisfy, prefering (in order):
-        # 1. Fragments that don't require a signature to be satisfied
-        # 2. Fragments whose satisfaction's size is smaller
-        # Record the unavailable (in either way) ones as we go.
-        arbitrage, unsatisfiable, undissatisfiable = [], [], []
-        for sub in subs:
-            sat, dissat = sub.satisfaction(sat_material), sub.dissatisfaction()
-            if sat.witness is None:
-                unsatisfiable.append(sub)
-            elif dissat.witness is None:
-                undissatisfiable.append(sub)
-            else:
-                arbitrage.append(
-                    (int(sat.has_sig), len(sat.witness) - len(dissat.witness), sub)
-                )
+        thresh_info = ThreshSubsInfo(subs, sat_material)
 
         # If not enough (dis)satisfactions are available, fail.
-        if len(unsatisfiable) > len(subs) - k or len(undissatisfiable) > k:
+        if (
+            len(thresh_info.unsatisfiable) > len(subs) - k
+            or len(thresh_info.undissatisfiable) > k
+        ):
             return Satisfaction.unavailable()
 
         # Otherwise, satisfy the k most optimal ones.
-        arbitrage = sorted(arbitrage, key=lambda x: x[:2])
-        optimal_sat = undissatisfiable + [a[2] for a in arbitrage] + unsatisfiable
+        arbitrage = sorted(thresh_info.available, key=lambda x: x[:2])
+        optimal_sat = (
+            thresh_info.undissatisfiable
+            + [a[2] for a in arbitrage]
+            + thresh_info.unsatisfiable
+        )
         to_satisfy = set(optimal_sat[:k])
         return sum(
             [
@@ -342,6 +369,8 @@ class ExecutionInfo:
         # dyn_ops = sum(sorted([sub._dyn_ops_count for sub in subs], reverse=True)[:k])
         # All subs are executed, there is no OP_IF branch.
         dyn_ops = sum([sub._dyn_ops_count for sub in subs])
+
+        # FIXME: has_sig should be taken into account. Maybe use ThreshSubsInfo.
 
         # In order to estimate the worst case we simulate to satisfy the k subs whose
         # sat/dissat ratio is the largest, and dissatisfy the others.
