@@ -424,7 +424,7 @@ class Multi(Node):
         self.p = Property("Bndu")
         self.needs_sig = True
         self.is_forced = False
-        self.is_expressive = False
+        self.is_expressive = True
         self.is_nonmalleable = True
         self.abs_heightlocks = False
         self.rel_heightlocks = False
