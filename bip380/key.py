@@ -1,9 +1,14 @@
+import coincurve
 import copy
 
 from bip32 import BIP32, HARDENED_INDEX
-from bip32.utils import coincurve, _deriv_path_str_to_list
+from bip32.utils import _deriv_path_str_to_list
 from bip380.utils.hashes import hash160
 from enum import Enum, auto
+
+
+def is_raw_key(obj):
+    return isinstance(obj, (coincurve.PublicKey, coincurve.PublicKeyXOnly))
 
 
 class DescriptorKeyError(Exception):
@@ -145,17 +150,31 @@ class DescriptorKey:
     May be an extended or raw public key.
     """
 
-    def __init__(self, key):
+    def __init__(self, key, x_only=False):
         # Information about the origin of this key.
         self.origin = None
         # If it is an xpub, a path toward a child key of that xpub.
         self.path = None
+        # Whether to only create x-only public keys.
+        self.x_only = x_only
+        # Whether to serialize to string representation without the sign byte.
+        # This is necessary to roundtrip 33-bytes keys under Taproot context.
+        self.ser_x_only = x_only
 
         if isinstance(key, bytes):
-            if len(key) != 33:
-                raise DescriptorKeyError("Only compressed keys are supported")
+            if len(key) == 32:
+                key_cls = coincurve.PublicKeyXOnly
+                self.x_only = True
+                self.ser_x_only = True
+            elif len(key) == 33:
+                key_cls = coincurve.PublicKey
+                self.ser_x_only = False
+            else:
+                raise DescriptorKeyError(
+                    "Only compressed and x-only keys are supported"
+                )
             try:
-                self.key = coincurve.PublicKey(key)
+                self.key = key_cls(key)
             except ValueError as e:
                 raise DescriptorKeyError(f"Public key parsing error: '{str(e)}'")
 
@@ -170,9 +189,16 @@ class DescriptorKey:
                 self.origin = DescriporKeyOrigin.from_str(origin + "]")
 
             # Is it a raw key?
-            if len(key) == 66:
+            if len(key) in (64, 66):
+                pk_cls = coincurve.PublicKey
+                if len(key) == 64:
+                    pk_cls = coincurve.PublicKeyXOnly
+                    self.x_only = True
+                    self.ser_x_only = True
+                else:
+                    self.ser_x_only = False
                 try:
-                    self.key = coincurve.PublicKey(bytes.fromhex(key))
+                    self.key = pk_cls(bytes.fromhex(key))
                 except ValueError as e:
                     raise DescriptorKeyError(f"Public key parsing error: '{str(e)}'")
             # If not it must be an xpub.
@@ -228,8 +254,11 @@ class DescriptorKey:
         if isinstance(self.key, BIP32):
             key += self.key.get_xpub()
         else:
-            assert isinstance(self.key, coincurve.PublicKey)
-            key += self.key.format().hex()
+            assert is_raw_key(self.key)
+            raw_key = self.key.format()
+            if len(raw_key) == 33 and self.ser_x_only:
+                raw_key = raw_key[1:]
+            key += raw_key.hex()
 
         if self.path is not None:
             key = ser_paths(key, self.path.paths)
@@ -262,8 +291,12 @@ class DescriptorKey:
 
         Will raise if this key contains multiple derivation paths.
         """
-        if isinstance(self.key, coincurve.PublicKey):
-            return self.key.format()
+        if is_raw_key(self.key):
+            raw = self.key.format()
+            if self.x_only and len(raw) == 33:
+                return raw[1:]
+            assert len(raw) == 32 or not self.x_only
+            return raw
         else:
             assert isinstance(self.key, BIP32)
             path = self.derivation_path()
@@ -290,7 +323,7 @@ class DescriptorKey:
 
         if self.path.kind == KeyPathKind.WILDCARD_HARDENED:
             index += 2 ** 31
-        assert index <= 2 ** 32
+        assert index < 2 ** 32
 
         if self.origin is None:
             fingerprint = hash160(self.key.pubkey)[:4]

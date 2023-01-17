@@ -3,6 +3,7 @@ from bip380.miniscript import Node
 from bip380.utils.hashes import sha256, hash160
 from bip380.utils.script import (
     CScript,
+    OP_1,
     OP_DUP,
     OP_HASH160,
     OP_EQUALVERIFY,
@@ -12,6 +13,7 @@ from bip380.utils.script import (
 from .checksum import descsum_create
 from .errors import DescriptorParsingError
 from .parsing import descriptor_from_str
+from .utils import taproot_tweak
 
 
 class Descriptor:
@@ -94,7 +96,9 @@ class Descriptor:
         # First figure out the number of descriptors there will be
         for key in self.keys:
             if key.is_multipath():
-                singlepath_descs += [self.copy() for _ in range(len(key.path.paths) - 1)]
+                singlepath_descs += [
+                    self.copy() for _ in range(len(key.path.paths) - 1)
+                ]
                 break
 
         # Return early if there was no multipath key expression
@@ -178,3 +182,39 @@ class WpkhDescriptor(Descriptor):
         """
         assert isinstance(signature, bytes)
         return [signature, self.pubkey.bytes()]
+
+
+class TrDescriptor(Descriptor):
+    """A Pay-to-Taproot Output Script Descriptor."""
+
+    def __init__(self, internal_key):
+        assert isinstance(internal_key, DescriptorKey) and internal_key.x_only
+        self.internal_key = internal_key
+
+    def __repr__(self):
+        return descsum_create(f"tr({self.internal_key})")
+
+    def output_key(self):
+        # "If the spending conditions do not require a script path, the output key
+        # should commit to an unspendable script path" (see BIP341, BIP386)
+        return taproot_tweak(self.internal_key.bytes(), b"").format()
+
+    @property
+    def script_pubkey(self):
+        return CScript([OP_1, self.output_key()])
+
+    @property
+    def keys(self):
+        return [self.internal_key]
+
+    def satisfy(self, sat_material=None):
+        """Get the witness stack to spend from this descriptor.
+
+        :param sat_material: a miniscript.satisfaction.SatisfactionMaterial with data
+                             available to spend from the key path or any of the leaves.
+        """
+        out_key = self.output_key()
+        if out_key in sat_material.signatures:
+            return [sat_material.signatures[out_key]]
+
+        return

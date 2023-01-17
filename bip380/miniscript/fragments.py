@@ -227,7 +227,6 @@ class PkNode(Node):
         return [self.pubkey]
 
 
-# TODO: A PkNode class to inherit those two from?
 class Pk(PkNode):
     def __init__(self, pubkey):
         PkNode.__init__(self, pubkey)
@@ -654,7 +653,8 @@ class OrC(Node):
         exec_info = ExecutionInfo.from_or_uneven(
             self.subs[0].exec_info, self.subs[1].exec_info, ops_count=2
         )
-        return exec_info.set_undissatisfiable()  # it's V.
+        exec_info.set_undissatisfiable()  # it's V.
+        return exec_info
 
     def satisfaction(self, sat_material):
         return Satisfaction.from_or_uneven(sat_material, self.subs[0], self.subs[1])

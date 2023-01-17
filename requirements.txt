@@ -1,1 +1,2 @@
 bip32~=3.0
+coincurve~=18.0
