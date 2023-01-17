@@ -1000,3 +1000,8 @@ def test_satisfaction_validity():
     ]:
         andv_frag = fragments.AndV(fragments.WrapV(pk_frag), h_frag(digest))
         sat_test(andv_frag, keypairs=pk_keypairs, preimages={digest: preimage})
+
+
+def test_multi_is_expressive():
+    frag = fragments.Node.from_str(f"or_b(pk({dummy_pk()}),a:multi(1,{dummy_pk()},{dummy_pk()}))")
+    assert frag.is_nonmalleable
