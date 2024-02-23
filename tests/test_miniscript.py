@@ -24,7 +24,13 @@ from itertools import chain
 from bip380.key import DescriptorKey
 from bip380.miniscript import fragments, SatisfactionMaterial
 from bip380.miniscript.errors import MiniscriptMalformed
-from bip380.utils.script import CScript
+from bip380.utils.script import (
+    CScript,
+    OP_CHECKSIG,
+    OP_CHECKSIGADD,
+    OP_EQUAL,
+    OP_NUMEQUAL,
+)
 
 
 def dummy_pk():
@@ -56,17 +62,17 @@ def hash256(data):
     return sha256(sha256(data))
 
 
-def roundtrip(ms_str):
+def roundtrip(ms_str, is_taproot=False):
     """Test we can parse to and from Script and string representation.
 
     Note that the Script representation does not necessarily roundtrip. However
     it must be deterministic.
     """
-    node_a = fragments.Node.from_str(ms_str)
-    node_b = fragments.Node.from_script(node_a.script)
+    node_a = fragments.Node.from_str(ms_str, is_taproot)
+    node_b = fragments.Node.from_script(node_a.script, is_taproot)
 
-    assert node_b.script == fragments.Node.from_script(node_b.script).script
-    assert str(node_b) == str(fragments.Node.from_str(str(node_b)))
+    assert node_b.script == fragments.Node.from_script(node_b.script, is_taproot).script
+    assert str(node_b) == str(fragments.Node.from_str(str(node_b), is_taproot))
 
     return node_b
 
@@ -1005,3 +1011,78 @@ def test_satisfaction_validity():
 def test_multi_is_expressive():
     frag = fragments.Node.from_str(f"or_b(pk({dummy_pk()}),a:multi(1,{dummy_pk()},{dummy_pk()}))")
     assert frag.is_nonmalleable
+
+def test_multi_a():
+
+    # Get a raw x-only public key
+    def pk():
+        return bytes.fromhex(dummy_pk())[1:]
+
+    # Make sure we roundtrip under various conditions.
+    roundtrip(f"multi_a(1,{pk().hex()})", is_taproot=True)
+    roundtrip(f"multi_a(2,{pk().hex()},{pk().hex()})", is_taproot=True)
+    roundtrip(f"multi_a(2,{pk().hex()},{pk().hex()},{pk().hex()})", is_taproot=True)
+    roundtrip(f"multi_a(1,{pk().hex()},{pk().hex()},{pk().hex()})", is_taproot=True)
+    ms_str = "multi_a(42,"
+    for i in range(999):
+        ms_str += pk().hex()
+        if i != 998:
+            ms_str += ","
+    ms_str += ")"
+    roundtrip(ms_str, is_taproot=True)
+
+    # Make sure we detect some pathological cases, especially when parsing from Script.
+    with pytest.raises(AssertionError):
+        fragments.Node.from_str(f"multi_a(2,{pk().hex()})", is_taproot=True)
+    with pytest.raises(MiniscriptMalformed):
+        fragments.Node.from_script(CScript([pk(), OP_CHECKSIGADD, 1, OP_NUMEQUAL]), is_taproot=True)
+    with pytest.raises(MiniscriptMalformed):
+        fragments.Node.from_script(
+            CScript([pk(), OP_CHECKSIG, pk(), OP_CHECKSIG, 1, OP_NUMEQUAL]), is_taproot=True
+        )
+    with pytest.raises(MiniscriptMalformed):
+        fragments.Node.from_script(
+            CScript([pk(), OP_CHECKSIGADD, pk(), OP_CHECKSIG, 1, OP_NUMEQUAL]), is_taproot=True
+        )
+    with pytest.raises(MiniscriptMalformed):
+        fragments.Node.from_script(
+            CScript([pk(), OP_CHECKSIG, pk(), OP_CHECKSIGADD, 1, OP_EQUAL]), is_taproot=True
+        )
+    with pytest.raises(MiniscriptMalformed):
+        fragments.Node.from_script(
+            CScript(
+                [
+                    pk(),
+                    OP_CHECKSIG,
+                    b"\x02" + bytes(31) + b"\x01",
+                    OP_CHECKSIGADD,
+                    1,
+                    OP_NUMEQUAL,
+                ]
+            ), is_taproot=True
+        )
+
+    # Test all the combinations for a 2-of-3
+    pubkeys = [pk() for _ in range(3)]
+    ms = fragments.MultiA(2, [DescriptorKey(k) for k in pubkeys])
+    sat_material = SatisfactionMaterial()
+    assert ms.satisfy(sat_material) is None
+    sat_material.signatures[pubkeys[0]] = bytes(64)
+    assert ms.satisfy(sat_material) is None
+    sat_material.signatures[pubkeys[1]] = int(1).to_bytes(64, "big")
+    assert ms.satisfy(sat_material) == [bytes(64), int(1).to_bytes(64, "big"), b""]
+    sat_material.signatures[pubkeys[2]] = int(2).to_bytes(64, "big")
+    assert ms.satisfy(sat_material) == [bytes(64), int(1).to_bytes(64, "big"), b""]
+    del sat_material.signatures[pubkeys[0]]
+    assert ms.satisfy(sat_material) == [
+        b"",
+        int(1).to_bytes(64, "big"),
+        int(2).to_bytes(64, "big"),
+    ]
+    sat_material.signatures[pubkeys[0]] = bytes(64)
+    del sat_material.signatures[pubkeys[1]]
+    assert ms.satisfy(sat_material) == [
+        bytes(64),
+        b"",
+        int(2).to_bytes(64, "big"),
+    ]

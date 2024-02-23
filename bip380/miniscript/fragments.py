@@ -30,10 +30,12 @@ from bip380.utils.script import (
     OP_CHECKMULTISIGVERIFY,
     OP_CHECKSEQUENCEVERIFY,
     OP_CHECKSIG,
+    OP_CHECKSIGADD,
     OP_CHECKSIGVERIFY,
     OP_HASH160,
     OP_HASH256,
     OP_NOTIF,
+    OP_NUMEQUAL,
     OP_RIPEMD160,
     OP_SHA256,
     OP_SIZE,
@@ -469,6 +471,63 @@ class Multi(Node):
 
     def __repr__(self):
         return f"multi({','.join([str(self.k)] + [str(k) for k in self.keys])})"
+
+
+class MultiA(Node):
+    def __init__(self, k, keys):
+        assert 1 <= k <= len(keys) and len(keys) <= 999
+        assert all(isinstance(k, DescriptorKey) and k.ser_x_only for k in keys)
+
+        self.k = k
+        self.pubkeys = keys
+
+        self.p = Property("Bndu")
+        self.needs_sig = True
+        self.is_forced = False
+        self.is_expressive = True
+        self.is_nonmalleable = True
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(len(keys) + 1, 0, len(keys), len(keys))
+
+    @property
+    def keys(self):
+        return self.pubkeys
+
+    @property
+    def _script(self):
+        s = [self.pubkeys[0].bytes(), OP_CHECKSIG]
+        for k in self.pubkeys[1:]:
+            s += [k.bytes(), OP_CHECKSIGADD]
+        return s + [self.k, OP_NUMEQUAL]
+
+    def satisfaction(self, sat_material):
+        sigs = []
+        sigs_count = 0
+        for key in self.keys:
+            sig = sat_material.signatures.get(key.bytes())
+            if sig is not None:
+                assert isinstance(sig, bytes)
+                sigs.append(sig)
+                sigs_count += 1
+            else:
+                sigs.append(b"")
+            if sigs_count == self.k:
+                break
+        if sigs_count < self.k:
+            return Satisfaction.unavailable()
+        if len(sigs) < len(self.keys):
+            sigs += [b""] * (len(self.keys) - len(sigs))
+        return Satisfaction(witness=sigs, has_sig=True)
+
+    def dissatisfaction(self):
+        return Satisfaction(witness=[b""] * len(self.keys))
+
+    def __repr__(self):
+        return f"multi_a({','.join([str(self.k)] + [str(k) for k in self.keys])})"
 
 
 class AndV(Node):

@@ -11,6 +11,7 @@ from bip380.utils.script import (
     OP_ADD,
     OP_BOOLAND,
     OP_BOOLOR,
+    OP_CHECKSIGADD,
     OP_CHECKSIGVERIFY,
     OP_CHECKMULTISIGVERIFY,
     OP_EQUALVERIFY,
@@ -28,6 +29,7 @@ from bip380.utils.script import (
     OP_HASH160,
     OP_HASH256,
     OP_NOTIF,
+    OP_NUMEQUAL,
     OP_RIPEMD160,
     OP_SHA256,
     OP_SIZE,
@@ -503,6 +505,50 @@ def parse_expr_list(expr_list, is_taproot):
     raise MiniscriptMalformed(f"{expr_list}")
 
 
+def parse_xonly_key(ser_key):
+    """Parse a public key from bytes. Raises if it wasn't serialized as x-only."""
+
+    key = DescriptorKey(ser_key)
+    if not key.ser_x_only:
+        raise MiniscriptMalformed("Keys must be serialized as 32 bytes in multi_a")
+    return key
+
+
+def parse_multi_a(expr_list, is_taproot):
+    """Try to parse a multi_a fragment from a list of at least 4 elements.
+
+    Returns True on success, False otherwise. Modifies the list in place.
+    """
+    assert len(expr_list) >= 4
+
+    # Parse the threshold (<k> OP_NUMEQUAL)
+    if expr_list[-1] != OP_NUMEQUAL:
+        return False
+    try:
+        k = stack_item_to_int(expr_list[-2])
+    except ScriptNumError:
+        return False
+
+    # Now parse the second to nth public keys (<key1> CSA <key2> CSA ... <keyN> CSA)
+    pubkeys = []
+    i = 1
+    while len(expr_list) > 2 + i + 1 and expr_list[-2 - i] == OP_CHECKSIGADD:
+        pubkeys.append(parse_xonly_key(expr_list[-2 - i - 1]))
+        i += 2
+
+    # Finally parse the first publick key (<key0> CHECKSIG)
+    if expr_list[-2 - i] != OP_CHECKSIG:
+        return False
+    pubkeys.append(parse_xonly_key(expr_list[-2 - i - 1]))
+
+    # Perform the Taproot check only here so we can be sure they actually used a multi_a.
+    assert is_taproot, "multi_a() is only available for Taproot"  # TODO: real errors
+
+    # Success. Replace the opcodes with the fragment.
+    expr_list[-2 - i - 1 :] = [fragments.MultiA(k, pubkeys[::-1])]
+    return True
+
+
 def miniscript_from_script(script, is_taproot, pkh_preimages={}):
     """Construct miniscript node from script.
 
@@ -517,6 +563,11 @@ def miniscript_from_script(script, is_taproot, pkh_preimages={}):
     # We first parse terminal expressions.
     idx = 0
     while idx < expr_list_len:
+        # Try to parse a multi_a fragment. This needs to be done first or the <key> CHECKSIG
+        # expressions within multi_a fragments would be parsed as pk_k()s!
+        if expr_list_len - idx >= 4 and parse_multi_a(expr_list, is_taproot):
+            expr_list_len = len(expr_list)
+
         parse_term_single_elem(expr_list, idx)
 
         if expr_list_len - idx >= 2:
@@ -646,6 +697,7 @@ def parse_one(string, is_taproot):
         "older",
         "after",
         "multi",
+        "multi_a",
     ]:
         params, remaining = split_params(remaining)
 
@@ -693,6 +745,12 @@ def parse_one(string, is_taproot):
                 key_obj = DescriptorKey(param)
                 key_n.append(key_obj)
             return fragments.Multi(k, key_n), remaining
+
+        if tag == "multi_a":
+            assert is_taproot, "multi_a() is only available for Taproot"  # TODO: real errors
+            k = int(params.pop(0))
+            keys = [DescriptorKey(p) for p in params]
+            return fragments.MultiA(k, keys), remaining
 
         assert False, (tag, params, remaining)
 

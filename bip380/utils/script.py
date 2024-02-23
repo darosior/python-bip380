@@ -125,6 +125,7 @@ OP_ADD = CScriptOp(0x93)
 
 OP_BOOLAND = CScriptOp(0x9A)
 OP_BOOLOR = CScriptOp(0x9B)
+OP_NUMEQUAL = CScriptOp(0x9C)
 
 # crypto
 OP_RIPEMD160 = CScriptOp(0xA6)
@@ -139,6 +140,9 @@ OP_CHECKMULTISIGVERIFY = CScriptOp(0xAF)
 # expansion
 OP_CHECKLOCKTIMEVERIFY = CScriptOp(0xB1)
 OP_CHECKSEQUENCEVERIFY = CScriptOp(0xB2)
+
+# Added in BIP342
+OP_CHECKSIGADD = CScriptOp(0xBA)
 
 OP_INVALIDOPCODE = CScriptOp(0xFF)
 

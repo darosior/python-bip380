@@ -567,11 +567,15 @@ def test_taproot_script_path():
         == "00ca439c5b5eadfdb4c85353a5b76850d28c9ce410cf59f8b04afbc77a2ede6b"
     )
 
-    # A CMS made verify, and back Wdu, for the purpose of exercising various
+    # Can't use a multi() under Taproot.
+    with pytest.raises(DescriptorParsingError, match="only available for P2WSH"):
+        desc = Descriptor.from_str(
+            f"tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,multi(2,0227cb9432f93edc3ba82ca70c75bda335553a999e6ab885bc337fcb837aa18f4a,02ed00f0a17f220c7b2179ab9610ea2cccaf290c0f726ce472ab959b2528d2b9de))"
+        )
+
+    # A multi_a made verify, and back Wdu, for the purpose of exercising various
     # fragments.
-    # NOTE: this should be invalid under Taproot context, but at the moment we don't differentiate
-    # in the Miniscript logic.
-    multi_frag = fragments.Multi(
+    multi_frag = fragments.MultiA(
         2,
         [
             DescriptorKey(
@@ -582,7 +586,7 @@ def test_taproot_script_path():
             ),
         ],
     )
-    convoluted_cms = fragments.WrapA(
+    convoluted_multi_a = fragments.WrapA(
         fragments.AndB(
             fragments.WrapU(fragments.WrapT(fragments.WrapV(multi_frag))),
             fragments.WrapA(fragments.WrapL(fragments.Just1())),
@@ -603,7 +607,7 @@ def test_taproot_script_path():
         )
     )
     thresh_frag = fragments.Thresh(
-        1, [pkh_frag, fragments.WrapS(pk_frag), convoluted_cms]
+        1, [pkh_frag, fragments.WrapS(pk_frag), convoluted_multi_a]
     )
 
     # Single-script tree expressions
@@ -615,10 +619,6 @@ def test_taproot_script_path():
         "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,1)#ggpdnrdk"
     )
     assert str(desc.tree) == str(Node.from_str("1"))
-    with pytest.raises(DescriptorParsingError, match="only available for P2WSH"):
-        desc = roundtrip_desc(
-            f"tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{thresh_frag})#ar0xk7qv"
-        )
 
     # Deep tree (NOTE: it's ok to repeat keys across leaves)
     desc = roundtrip_desc(
@@ -650,20 +650,19 @@ def test_taproot_script_path():
         )
     )
 
-    # TODO: re-enable those once with multi_a instead.
     # Imbalanced trees
-    # desc = roundtrip_desc(
-        # f"tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{{{{{pk_frag},{pkh_frag}}},{convoluted_cms}}})#7zytn07r"
-    # )
-    # assert str(desc.tree.left_child.left_child) == str(pk_frag)
-    # assert str(desc.tree.left_child.right_child) == str(pkh_frag)
-    # assert str(desc.tree.right_child) == str(convoluted_cms)
-    # desc = roundtrip_desc(
-        # f"tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{{{pk_frag},{{{pkh_frag},{convoluted_cms}}}}})#6xae907j"
-    # )
-    # assert str(desc.tree.left_child) == str(pk_frag)
-    # assert str(desc.tree.right_child.left_child) == str(pkh_frag)
-    # assert str(desc.tree.right_child.right_child) == str(convoluted_cms)
+    desc = roundtrip_desc(
+        f"tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{{{{{pk_frag},{pkh_frag}}},{convoluted_multi_a}}})#a7dcefu7"
+    )
+    assert str(desc.tree.left_child.left_child) == str(pk_frag)
+    assert str(desc.tree.left_child.right_child) == str(pkh_frag)
+    assert str(desc.tree.right_child) == str(convoluted_multi_a)
+    desc = roundtrip_desc(
+        f"tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{{{pk_frag},{{{pkh_frag},{convoluted_multi_a}}}}})#67yr0cff"
+    )
+    assert str(desc.tree.left_child) == str(pk_frag)
+    assert str(desc.tree.right_child.left_child) == str(pkh_frag)
+    assert str(desc.tree.right_child.right_child) == str(convoluted_multi_a)
 
 
 def test_taproot_satisfaction():
