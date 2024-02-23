@@ -185,6 +185,7 @@ class Satisfaction:
         )
 
 
+# TODO: under Taproot we can also hit the maximum stack size.
 class ExecutionInfo:
     """Information about the execution of a Miniscript."""
 
