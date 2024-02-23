@@ -252,7 +252,7 @@ def parse_nonterm_2_elems(expr_list, idx):
         return expr_list
 
 
-def parse_nonterm_3_elems(expr_list, idx):
+def parse_nonterm_3_elems(expr_list, idx, is_taproot):
     """
     Try to parse a non-terminal node from *at least* three elements of
     {expr_list}, starting from {idx}.
@@ -314,12 +314,13 @@ def parse_nonterm_3_elems(expr_list, idx):
             return
         if m is None or m != len(keys):
             return
+        assert not is_taproot, "multi() only available for P2WSH"  # TODO: real errors
         node = fragments.Multi(k, keys)
         expr_list[idx : i + 2] = [node]
         return expr_list
 
 
-def parse_nonterm_4_elems(expr_list, idx):
+def parse_nonterm_4_elems(expr_list, idx, is_taproot):
     """
     Try to parse a non-terminal node from at least four elements of {expr_list},
     starting from {idx}.
@@ -372,7 +373,7 @@ def parse_nonterm_4_elems(expr_list, idx):
         and it_c.p.has_all("Vz")
         and it_d == OP_ENDIF
     ):
-        node = fragments.WrapD(it_c)
+        node = fragments.WrapD(it_c, is_taproot)
         expr_list[idx : idx + 4] = [node]
         return expr_list
 
@@ -456,7 +457,7 @@ def parse_nonterm_6_elems(expr_list, idx):
         return expr_list
 
 
-def parse_expr_list(expr_list):
+def parse_expr_list(expr_list, is_taproot):
     """Parse a node from a list of Script elements."""
     # Every recursive call must progress the AST construction,
     # until it is complete (single root node remains).
@@ -472,27 +473,27 @@ def parse_expr_list(expr_list):
         if expr_list_len - idx >= 2:
             new_expr_list = parse_nonterm_2_elems(expr_list, idx)
             if new_expr_list is not None:
-                return parse_expr_list(new_expr_list)
+                return parse_expr_list(new_expr_list, is_taproot)
 
         if expr_list_len - idx >= 3:
-            new_expr_list = parse_nonterm_3_elems(expr_list, idx)
+            new_expr_list = parse_nonterm_3_elems(expr_list, idx, is_taproot)
             if new_expr_list is not None:
-                return parse_expr_list(new_expr_list)
+                return parse_expr_list(new_expr_list, is_taproot)
 
         if expr_list_len - idx >= 4:
-            new_expr_list = parse_nonterm_4_elems(expr_list, idx)
+            new_expr_list = parse_nonterm_4_elems(expr_list, idx, is_taproot)
             if new_expr_list is not None:
-                return parse_expr_list(new_expr_list)
+                return parse_expr_list(new_expr_list, is_taproot)
 
         if expr_list_len - idx >= 5:
             new_expr_list = parse_nonterm_5_elems(expr_list, idx)
             if new_expr_list is not None:
-                return parse_expr_list(new_expr_list)
+                return parse_expr_list(new_expr_list, is_taproot)
 
         if expr_list_len - idx >= 6:
             new_expr_list = parse_nonterm_6_elems(expr_list, idx)
             if new_expr_list is not None:
-                return parse_expr_list(new_expr_list)
+                return parse_expr_list(new_expr_list, is_taproot)
 
         # Right-to-left parsing.
         # Step one position left.
@@ -502,12 +503,14 @@ def parse_expr_list(expr_list):
     raise MiniscriptMalformed(f"{expr_list}")
 
 
-def miniscript_from_script(script, pkh_preimages={}):
+def miniscript_from_script(script, is_taproot, pkh_preimages={}):
     """Construct miniscript node from script.
 
     :param script: The Bitcoin Script to decode.
     :param pkh_preimage: A mapping from keyhash to key to decode pk_h() fragments.
     """
+    assert isinstance(is_taproot, bool)
+
     expr_list = decompose_script(script)
     expr_list_len = len(expr_list)
 
@@ -537,7 +540,7 @@ def miniscript_from_script(script, pkh_preimages={}):
         idx += 1
 
     # fragments.And then recursively parse non-terminal ones.
-    return parse_expr_list(expr_list)
+    return parse_expr_list(expr_list, is_taproot)
 
 
 def split_params(string):
@@ -552,12 +555,12 @@ def split_params(string):
         return params.split(","), ""
 
 
-def parse_many(string):
+def parse_many(string, is_taproot):
     """Read a list of nodes before the next ')'."""
     subs = []
     remaining = string
     while True:
-        sub, remaining = parse_one(remaining)
+        sub, remaining = parse_one(remaining, is_taproot)
         subs.append(sub)
         if remaining[0] == ")":
             return subs, remaining[1:]
@@ -573,7 +576,7 @@ def parse_one_num(string):
     return int(string[:i]), string[i + 1 :]
 
 
-def parse_one(string):
+def parse_one(string, is_taproot):
     """Read a node and its subs recursively from a string.
     Returns the node and the part of the string not consumed.
     """
@@ -597,7 +600,7 @@ def parse_one(string):
 
     # fragments.Wrappers
     if char == ":":
-        sub, remaining = parse_one(remaining)
+        sub, remaining = parse_one(remaining, is_taproot)
         if tag == "a":
             return fragments.WrapA(sub), remaining
 
@@ -611,7 +614,7 @@ def parse_one(string):
             return fragments.WrapT(sub), remaining
 
         if tag == "d":
-            return fragments.WrapD(sub), remaining
+            return fragments.WrapD(sub, is_taproot), remaining
 
         if tag == "v":
             return fragments.WrapV(sub), remaining
@@ -683,6 +686,7 @@ def parse_one(string):
             return fragments.Hash160(digest), remaining
 
         if tag == "multi":
+            assert not is_taproot, "multi() only available for P2WSH"  # TODO: real errors
             k = int(params.pop(0))
             key_n = []
             for param in params:
@@ -697,7 +701,7 @@ def parse_one(string):
     if tag == "thresh":
         k, remaining = parse_one_num(remaining)
     # TODO: real errors in place of unpacking
-    subs, remaining = parse_many(remaining)
+    subs, remaining = parse_many(remaining, is_taproot)
 
     if tag == "and_v":
         return fragments.AndV(*subs), remaining
@@ -729,8 +733,10 @@ def parse_one(string):
     assert False, (tag, subs, remaining)  # TODO
 
 
-def miniscript_from_str(ms_str):
+def miniscript_from_str(ms_str, is_taproot):
     """Construct miniscript node from string representation"""
-    node, remaining = parse_one(ms_str)
+    assert isinstance(is_taproot, bool)
+
+    node, remaining = parse_one(ms_str, is_taproot)
     assert remaining == ""
     return node

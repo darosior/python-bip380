@@ -561,7 +561,7 @@ def test_satisfy_simple_combs():
                 or_frag = fragments.OrB(
                     h_frag,
                     fragments.WrapS(
-                        fragments.WrapD(fragments.WrapV(fragments.Older(timelock)))
+                        fragments.WrapD(fragments.WrapV(fragments.Older(timelock)), is_taproot=False)
                     ),
                 )
                 # Without the ability to satisfy the timelock, it'll choose the hash path.
@@ -578,7 +578,7 @@ def test_satisfy_simple_combs():
                 or_frag = fragments.OrB(
                     h_frag,
                     fragments.WrapS(
-                        fragments.WrapD(fragments.WrapV(fragments.Older(timelock)))
+                        fragments.WrapD(fragments.WrapV(fragments.Older(timelock)), is_taproot=False)
                     ),
                 )
                 assert or_frag.satisfaction(sat_material).witness == [b"\x01", b""]

@@ -95,15 +95,20 @@ class Node:
         # Needs to be implemented by derived classes.
         raise NotImplementedError
 
-    def from_str(ms_str):
+    # TODO: make the is_taproot parameter mandatory.
+    def from_str(ms_str, is_taproot=False):
         """Parse a Miniscript fragment from its string representation."""
         assert isinstance(ms_str, str)
-        return parsing.miniscript_from_str(ms_str)
+        assert isinstance(is_taproot, bool)
 
-    def from_script(script, pkh_preimages={}):
+        return parsing.miniscript_from_str(ms_str, is_taproot)
+
+    def from_script(script, is_taproot=False, pkh_preimages={}):
         """Decode a Miniscript fragment from its Script representation."""
         assert isinstance(script, CScript)
-        return parsing.miniscript_from_script(script, pkh_preimages)
+        assert isinstance(is_taproot, bool)
+
+        return parsing.miniscript_from_script(script, is_taproot, pkh_preimages)
 
     # TODO: have something like BuildScript from Core and get rid of the _script member.
     @property
@@ -1089,11 +1094,11 @@ class WrapT(AndV, WrapperNode):
 
 
 class WrapD(WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub, is_taproot):
         assert sub.p.has_all("Vz")
         WrapperNode.__init__(self, sub)
 
-        self.p = Property("Bond")
+        self.p = Property("Bond" + ("u" if is_taproot else ""))
         self.is_forced = True  # sub is V
         self.is_expressive = True  # sub is V, and we add a single dissat
 

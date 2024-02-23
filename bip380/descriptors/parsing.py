@@ -47,7 +47,7 @@ def parse_tree_inner(tree_str):
     #   - A Tree Expression
     #   - A closing brace }
     if tree_str[0] != "{":
-        return parse_one(tree_str)
+        return parse_one(tree_str, is_taproot=True)
     if len(tree_str) < 5 or tree_str[-1] != "}":
         raise DescriptorParsingError("Invalid Taproot tree expression")
     left_child, remaining = parse_tree_inner(tree_str[1:])
@@ -71,7 +71,7 @@ def descriptor_from_str(desc_str, strict=False):
 
     if desc_str.startswith("wsh(") and desc_str.endswith(")"):
         # TODO: decent errors in the Miniscript module to be able to catch them here.
-        ms = Node.from_str(desc_str[4:-1])
+        ms = Node.from_str(desc_str[4:-1], is_taproot=False)
         return descriptors.WshDescriptor(ms)
 
     if desc_str.startswith("wpkh(") and desc_str.endswith(")"):
