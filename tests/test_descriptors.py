@@ -433,6 +433,12 @@ def test_descriptor_parsing():
             "wsh(andor(pk(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/<0;1;2;3>/*),older(10000),pk(tpubD8LYfn6njiA2inCoxwM7EuN3cuLVcaHAwLYeups13dpevd3nHLRdK9NdQksWXrhLQVxcUZRpnp5CkJ1FhE61WRAsHxDNAkvGkoQkAeWDYjV/8/<0;1;2>/*)))"
         )
 
+    # Liana Taproot descriptor.
+    desc = Descriptor.from_str(
+        "tr(xpub661MyMwAqRbcFERisZuMzFcfg3Ur3dKB17kb8iEG89ZJYMHTWqKQGRdLjTXC6Byr8kjKo6JabFfRCm3ETM4woq7DxUXuUxxRFHfog4Peh41/<0;1>/*,{and_v(v:multi_a(2,[aabb0011/48'/0'/0'/2']xpub6Eze7yAT3Y1wGrnzedCNVYDXUqa9NmHVWck5emBaTbXtURbe1NWZbK9bsz1TiVE7Cz341PMTfYgFw1KdLWdzcM1UMFTcdQfCYhhXZ2HJvTW/1/<0;1>/*,[aabb0012/48'/0'/0'/2']xpub6Bw79HbNSeS2xXw1sngPE3ehnk1U3iSPCgLYzC9LpN8m9nDuaKLZvkg8QXxL5pDmEmQtYscmUD8B9MkAAZbh6vxPzNXMaLfGQ9Sb3z85qhR/1/<0;1>/*,[aabb0013/48'/0'/0'/2']xpub67zuTXF9Ln4731avKTBSawoVVNRuMfmRvkL7kLUaLBRqma9ZqdHBJg9qx8cPUm3oNQMiXT4TmGovXNoQPuwg17RFcVJ8YrnbcooN7pxVJqC/1/<0;1>/*),older(26352)),multi_a(3,[aabb0011/48'/0'/0'/2']xpub6Eze7yAT3Y1wGrnzedCNVYDXUqa9NmHVWck5emBaTbXtURbe1NWZbK9bsz1TiVE7Cz341PMTfYgFw1KdLWdzcM1UMFTcdQfCYhhXZ2HJvTW/0/<0;1>/*,[aabb0012/48'/0'/0'/2']xpub6Bw79HbNSeS2xXw1sngPE3ehnk1U3iSPCgLYzC9LpN8m9nDuaKLZvkg8QXxL5pDmEmQtYscmUD8B9MkAAZbh6vxPzNXMaLfGQ9Sb3z85qhR/0/<0;1>/*,[aabb0013/48'/0'/0'/2']xpub67zuTXF9Ln4731avKTBSawoVVNRuMfmRvkL7kLUaLBRqma9ZqdHBJg9qx8cPUm3oNQMiXT4TmGovXNoQPuwg17RFcVJ8YrnbcooN7pxVJqC/0/<0;1>/*)})#tugn7xtx"
+    )
+    assert desc.is_multipath()
+
 
 def test_taproot_key_path():
     def sanity_check_spk(desc_str, spk_hex):

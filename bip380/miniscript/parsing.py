@@ -749,7 +749,7 @@ def parse_one(string, is_taproot):
         if tag == "multi_a":
             assert is_taproot, "multi_a() is only available for Taproot"  # TODO: real errors
             k = int(params.pop(0))
-            keys = [DescriptorKey(p) for p in params]
+            keys = [DescriptorKey(p, x_only=True) for p in params]
             return fragments.MultiA(k, keys), remaining
 
         assert False, (tag, params, remaining)
