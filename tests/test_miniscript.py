@@ -624,9 +624,9 @@ def test_satisfy_simple_combs():
                 sat_material.clear()
 
     sat_material = SatisfactionMaterial()
-    pk_frag_a = fragments.Pk(keys[0])
-    pk_frag_b = fragments.Pk(keys[1])
-    pkh_frag = fragments.Pkh(keys[2])
+    pk_frag_a = fragments.Pk(keys[0], is_taproot=False)
+    pk_frag_b = fragments.Pk(keys[1], is_taproot=False)
+    pkh_frag = fragments.Pkh(keys[2], is_taproot=False)
     or_i_frag = fragments.OrI(pk_frag_a, pkh_frag)
     # No signature, no satisfaction.
     assert or_i_frag.satisfaction(sat_material).witness is None
@@ -667,8 +667,8 @@ def test_satisfy_simple_combs():
     sat_material.clear()
 
     check_pkh_c = fragments.WrapC(pkh_frag)
-    check_pk_d = fragments.WrapC(fragments.Pk(keys[3]))
-    check_pk_e = fragments.WrapC(fragments.Pk(keys[4]))
+    check_pk_d = fragments.WrapC(fragments.Pk(keys[3], is_taproot=False))
+    check_pk_e = fragments.WrapC(fragments.Pk(keys[4], is_taproot=False))
     or_d_frag = fragments.OrD(check_pk_a, check_pk_b)
     andor_frag = fragments.AndOr(
         check_pkh_c, fragments.WrapN(fragments.After(1_000)), check_pk_d
@@ -841,14 +841,14 @@ def test_satisfaction_validity():
 
     sat_test(fragments.Just1(), malleable=True)
 
-    pk_frag = fragments.WrapC(fragments.Pk(DescriptorKey(pubkeys[0])))
+    pk_frag = fragments.WrapC(fragments.Pk(DescriptorKey(pubkeys[0]), is_taproot=False))
     pk_keypairs = {pubkeys[0]: keypairs[pubkeys[0]]}
     sat_test(
         pk_frag,
         keypairs=pk_keypairs,
     )
 
-    pkh_frag = fragments.WrapC(fragments.Pkh(DescriptorKey(pubkeys[1])))
+    pkh_frag = fragments.WrapC(fragments.Pkh(DescriptorKey(pubkeys[1]), is_taproot=False))
     pkh_keypairs = {pubkeys[1]: keypairs[pubkeys[1]]}
     sat_test(
         pkh_frag,

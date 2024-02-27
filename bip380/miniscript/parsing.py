@@ -80,7 +80,7 @@ def decompose_script(script):
     return elems
 
 
-def parse_term_single_elem(expr_list, idx):
+def parse_term_single_elem(expr_list, idx, is_taproot):
     """
     Try to parse a terminal node from the element of {expr_list} at {idx}.
     """
@@ -90,7 +90,7 @@ def parse_term_single_elem(expr_list, idx):
         and len(expr_list[idx]) == 33
         and expr_list[idx][0] in [2, 3]
     ):
-        expr_list[idx] = fragments.Pk(expr_list[idx])
+        expr_list[idx] = fragments.Pk(expr_list[idx], is_taproot)
 
     # Match against JUST_1 and JUST_0.
     if expr_list[idx] == 1:
@@ -151,7 +151,7 @@ def parse_term_5_elems(expr_list, idx, pkh_preimages={}):
     key_hash = expr_list[idx + 2]
     key = pkh_preimages.get(key_hash)
     assert key is not None  # TODO: have a real error here
-    node = fragments.Pkh(key)
+    node = fragments.Pkh(key, is_taproot)
     expr_list[idx : idx + 5] = [node]
     return expr_list
 
@@ -508,7 +508,7 @@ def parse_expr_list(expr_list, is_taproot):
 def parse_xonly_key(ser_key):
     """Parse a public key from bytes. Raises if it wasn't serialized as x-only."""
 
-    key = DescriptorKey(ser_key)
+    key = DescriptorKey(ser_key, x_only=True)
     if not key.ser_x_only:
         raise MiniscriptMalformed("Keys must be serialized as 32 bytes in multi_a")
     return key
@@ -568,7 +568,7 @@ def miniscript_from_script(script, is_taproot, pkh_preimages={}):
         if expr_list_len - idx >= 4 and parse_multi_a(expr_list, is_taproot):
             expr_list_len = len(expr_list)
 
-        parse_term_single_elem(expr_list, idx)
+        parse_term_single_elem(expr_list, idx, is_taproot)
 
         if expr_list_len - idx >= 2:
             new_expr_list = parse_term_2_elems(expr_list, idx)
@@ -708,16 +708,16 @@ def parse_one(string, is_taproot):
             return fragments.Just1(), remaining
 
         if tag == "pk":
-            return fragments.WrapC(fragments.Pk(params[0])), remaining
+            return fragments.WrapC(fragments.Pk(params[0], is_taproot)), remaining
 
         if tag == "pk_k":
-            return fragments.Pk(params[0]), remaining
+            return fragments.Pk(params[0], is_taproot), remaining
 
         if tag == "pkh":
-            return fragments.WrapC(fragments.Pkh(params[0])), remaining
+            return fragments.WrapC(fragments.Pkh(params[0], is_taproot)), remaining
 
         if tag == "pk_h":
-            return fragments.Pkh(params[0]), remaining
+            return fragments.Pkh(params[0], is_taproot), remaining
 
         if tag == "older":
             value = int(params[0])

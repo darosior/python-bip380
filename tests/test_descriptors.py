@@ -596,14 +596,16 @@ def test_taproot_script_path():
         fragments.Pk(
             DescriptorKey(
                 "02cc24adfed5a481b000192042b2399087437d8eb16095c3dda1d45a4fbf868017"
-            )
+            ),
+            is_taproot=True,
         )
     )
     pkh_frag = fragments.WrapC(
         fragments.Pkh(
             DescriptorKey(
                 "033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a"
-            )
+            ),
+            is_taproot=True,
         )
     )
     thresh_frag = fragments.Thresh(

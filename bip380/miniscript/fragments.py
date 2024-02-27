@@ -210,10 +210,10 @@ class PkNode(Node):
     Should not be instanced directly, use Pk() or Pkh().
     """
 
-    def __init__(self, pubkey):
+    def __init__(self, pubkey, is_taproot):
 
         if isinstance(pubkey, bytes) or isinstance(pubkey, str):
-            self.pubkey = DescriptorKey(pubkey)
+            self.pubkey = DescriptorKey(pubkey, x_only=is_taproot)
         elif isinstance(pubkey, DescriptorKey):
             self.pubkey = pubkey
         else:
@@ -235,8 +235,8 @@ class PkNode(Node):
 
 
 class Pk(PkNode):
-    def __init__(self, pubkey):
-        PkNode.__init__(self, pubkey)
+    def __init__(self, pubkey, is_taproot):
+        PkNode.__init__(self, pubkey, is_taproot)
 
         self.p = Property("Konud")
         self.exec_info = ExecutionInfo(0, 0, 0, 0)
@@ -260,8 +260,8 @@ class Pk(PkNode):
 
 class Pkh(PkNode):
     # FIXME: should we support a hash here, like rust-bitcoin? I don't think it's safe.
-    def __init__(self, pubkey):
-        PkNode.__init__(self, pubkey)
+    def __init__(self, pubkey, is_taproot):
+        PkNode.__init__(self, pubkey, is_taproot)
 
         self.p = Property("Knud")
         self.exec_info = ExecutionInfo(3, 0, 1, 1)
@@ -423,7 +423,7 @@ class Hash160(HashNode):
 class Multi(Node):
     def __init__(self, k, keys):
         assert 1 <= k <= len(keys)
-        assert all(isinstance(k, DescriptorKey) for k in keys)
+        assert all(isinstance(k, DescriptorKey) and not k.ser_x_only for k in keys)
 
         self.k = k
         self.pubkeys = keys
