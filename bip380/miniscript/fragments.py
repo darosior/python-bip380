@@ -30,10 +30,12 @@ from bip380.utils.script import (
     OP_CHECKMULTISIGVERIFY,
     OP_CHECKSEQUENCEVERIFY,
     OP_CHECKSIG,
+    OP_CHECKSIGADD,
     OP_CHECKSIGVERIFY,
     OP_HASH160,
     OP_HASH256,
     OP_NOTIF,
+    OP_NUMEQUAL,
     OP_RIPEMD160,
     OP_SHA256,
     OP_SIZE,
@@ -95,15 +97,20 @@ class Node:
         # Needs to be implemented by derived classes.
         raise NotImplementedError
 
-    def from_str(ms_str):
+    # TODO: make the is_taproot parameter mandatory.
+    def from_str(ms_str, is_taproot=False):
         """Parse a Miniscript fragment from its string representation."""
         assert isinstance(ms_str, str)
-        return parsing.miniscript_from_str(ms_str)
+        assert isinstance(is_taproot, bool)
 
-    def from_script(script, pkh_preimages={}):
+        return parsing.miniscript_from_str(ms_str, is_taproot)
+
+    def from_script(script, is_taproot=False, pkh_preimages={}):
         """Decode a Miniscript fragment from its Script representation."""
         assert isinstance(script, CScript)
-        return parsing.miniscript_from_script(script, pkh_preimages)
+        assert isinstance(is_taproot, bool)
+
+        return parsing.miniscript_from_script(script, is_taproot, pkh_preimages)
 
     # TODO: have something like BuildScript from Core and get rid of the _script member.
     @property
@@ -203,10 +210,10 @@ class PkNode(Node):
     Should not be instanced directly, use Pk() or Pkh().
     """
 
-    def __init__(self, pubkey):
+    def __init__(self, pubkey, is_taproot):
 
         if isinstance(pubkey, bytes) or isinstance(pubkey, str):
-            self.pubkey = DescriptorKey(pubkey)
+            self.pubkey = DescriptorKey(pubkey, x_only=is_taproot)
         elif isinstance(pubkey, DescriptorKey):
             self.pubkey = pubkey
         else:
@@ -228,8 +235,8 @@ class PkNode(Node):
 
 
 class Pk(PkNode):
-    def __init__(self, pubkey):
-        PkNode.__init__(self, pubkey)
+    def __init__(self, pubkey, is_taproot):
+        PkNode.__init__(self, pubkey, is_taproot)
 
         self.p = Property("Konud")
         self.exec_info = ExecutionInfo(0, 0, 0, 0)
@@ -253,8 +260,8 @@ class Pk(PkNode):
 
 class Pkh(PkNode):
     # FIXME: should we support a hash here, like rust-bitcoin? I don't think it's safe.
-    def __init__(self, pubkey):
-        PkNode.__init__(self, pubkey)
+    def __init__(self, pubkey, is_taproot):
+        PkNode.__init__(self, pubkey, is_taproot)
 
         self.p = Property("Knud")
         self.exec_info = ExecutionInfo(3, 0, 1, 1)
@@ -416,7 +423,7 @@ class Hash160(HashNode):
 class Multi(Node):
     def __init__(self, k, keys):
         assert 1 <= k <= len(keys)
-        assert all(isinstance(k, DescriptorKey) for k in keys)
+        assert all(isinstance(k, DescriptorKey) and not k.ser_x_only for k in keys)
 
         self.k = k
         self.pubkeys = keys
@@ -464,6 +471,63 @@ class Multi(Node):
 
     def __repr__(self):
         return f"multi({','.join([str(self.k)] + [str(k) for k in self.keys])})"
+
+
+class MultiA(Node):
+    def __init__(self, k, keys):
+        assert 1 <= k <= len(keys) and len(keys) <= 999
+        assert all(isinstance(k, DescriptorKey) and k.ser_x_only for k in keys)
+
+        self.k = k
+        self.pubkeys = keys
+
+        self.p = Property("Bndu")
+        self.needs_sig = True
+        self.is_forced = False
+        self.is_expressive = True
+        self.is_nonmalleable = True
+        self.abs_heightlocks = False
+        self.rel_heightlocks = False
+        self.abs_timelocks = False
+        self.rel_timelocks = False
+        self.no_timelock_mix = True
+        self.exec_info = ExecutionInfo(len(keys) + 1, 0, len(keys), len(keys))
+
+    @property
+    def keys(self):
+        return self.pubkeys
+
+    @property
+    def _script(self):
+        s = [self.pubkeys[0].bytes(), OP_CHECKSIG]
+        for k in self.pubkeys[1:]:
+            s += [k.bytes(), OP_CHECKSIGADD]
+        return s + [self.k, OP_NUMEQUAL]
+
+    def satisfaction(self, sat_material):
+        sigs = []
+        sigs_count = 0
+        for key in self.keys:
+            sig = sat_material.signatures.get(key.bytes())
+            if sig is not None:
+                assert isinstance(sig, bytes)
+                sigs.append(sig)
+                sigs_count += 1
+            else:
+                sigs.append(b"")
+            if sigs_count == self.k:
+                break
+        if sigs_count < self.k:
+            return Satisfaction.unavailable()
+        if len(sigs) < len(self.keys):
+            sigs += [b""] * (len(self.keys) - len(sigs))
+        return Satisfaction(witness=sigs, has_sig=True)
+
+    def dissatisfaction(self):
+        return Satisfaction(witness=[b""] * len(self.keys))
+
+    def __repr__(self):
+        return f"multi_a({','.join([str(self.k)] + [str(k) for k in self.keys])})"
 
 
 class AndV(Node):
@@ -1089,11 +1153,11 @@ class WrapT(AndV, WrapperNode):
 
 
 class WrapD(WrapperNode):
-    def __init__(self, sub):
+    def __init__(self, sub, is_taproot):
         assert sub.p.has_all("Vz")
         WrapperNode.__init__(self, sub)
 
-        self.p = Property("Bond")
+        self.p = Property("Bond" + ("u" if is_taproot else ""))
         self.is_forced = True  # sub is V
         self.is_expressive = True  # sub is V, and we add a single dissat
 

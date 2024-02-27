@@ -37,8 +37,10 @@ used within `wsh()` descriptors), with a minimal amount of dependencies.
 
 ## WIP: this is not ready for any real use!
 
-This library is still a work in progress. It contains known bugs (in the satisfier for instance) and
-there are probably many unknown ones.
+This library is still a work in progress. It contains known bugs (in the satisfier or the
+Taproot-Miniscript implementation for instance) and there are probably many unknown ones. See [this
+issue](https://github.com/darosior/python-bip380/issues/27) for a discussion about the state of this
+library.
 
 Still, it's ready for hacking around and contributions are welcome. See the [issue
 tracker](https://github.com/darosior/python-miniscript/issues) for ideas on where to start.

@@ -13,7 +13,7 @@ from bip380.utils.script import (
 from .checksum import descsum_create
 from .errors import DescriptorParsingError
 from .parsing import descriptor_from_str
-from .utils import taproot_tweak
+from .utils import tapleaf_hash, taproot_tweak, TaplefSat, TreeNode
 
 
 class Descriptor:
@@ -187,25 +187,43 @@ class WpkhDescriptor(Descriptor):
 class TrDescriptor(Descriptor):
     """A Pay-to-Taproot Output Script Descriptor."""
 
-    def __init__(self, internal_key):
+    def __init__(self, internal_key, tree=None):
         assert isinstance(internal_key, DescriptorKey) and internal_key.x_only
+        assert tree is None or isinstance(tree, (TreeNode, Node))
         self.internal_key = internal_key
+        self.tree = tree
 
     def __repr__(self):
+        if self.tree is not None:
+            return descsum_create(f"tr({self.internal_key},{self.tree})")
         return descsum_create(f"tr({self.internal_key})")
 
     def output_key(self):
-        # "If the spending conditions do not require a script path, the output key
-        # should commit to an unspendable script path" (see BIP341, BIP386)
-        return taproot_tweak(self.internal_key.bytes(), b"").format()
+        if isinstance(self.tree, TreeNode):
+            merkle_root = self.tree.merkle_root()
+        elif isinstance(self.tree, Node):
+            merkle_root = tapleaf_hash(self.tree.script)
+        else:
+            assert self.tree is None
+            # "If the spending conditions do not require a script path, the output key
+            # should commit to an unspendable script path" (see BIP341, BIP386)
+            merkle_root = b""
+        return taproot_tweak(self.internal_key.bytes(), merkle_root)
 
     @property
     def script_pubkey(self):
-        return CScript([OP_1, self.output_key()])
+        return CScript([OP_1, self.output_key().format()])
 
     @property
     def keys(self):
-        return [self.internal_key]
+        if isinstance(self.tree, Node):
+            leaves_keys = self.tree.keys
+        elif isinstance(self.tree, TreeNode):
+            leaves_keys = [k for leaf in self.tree.leaves() for k in leaf.keys]
+        else:
+            assert self.tree is None
+            leaves_keys = []
+        return [self.internal_key] + leaves_keys
 
     def satisfy(self, sat_material=None):
         """Get the witness stack to spend from this descriptor.
@@ -213,8 +231,27 @@ class TrDescriptor(Descriptor):
         :param sat_material: a miniscript.satisfaction.SatisfactionMaterial with data
                              available to spend from the key path or any of the leaves.
         """
+        # First, try to satisfy using key-path spend
         out_key = self.output_key()
-        if out_key in sat_material.signatures:
-            return [sat_material.signatures[out_key]]
+        raw_out_key = out_key.format()
+        if raw_out_key in sat_material.signatures:
+            return [sat_material.signatures[raw_out_key]]
+
+        # Then, look for satisfiable leaves. Use the less expensive available.
+        if self.tree is None:
+            return
+        merkle_proofs = self.tree.merkle_proofs()
+        best_sat = None
+        for leaf, merkle_proof in merkle_proofs.items():
+            print(merkle_proof)
+            sat = leaf.satisfy(sat_material)
+            if sat is None:
+                continue
+            sat = TaplefSat(merkle_proof, sat, leaf.script)
+            if best_sat is None or sat < best_sat:
+                best_sat = sat
+
+        if best_sat is not None:
+            return best_sat.witness(self.internal_key, out_key.parity)
 
         return

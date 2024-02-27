@@ -21,7 +21,7 @@ from bitcointx.core.script import (
 )
 from bip380.descriptors import Descriptor
 from bip380.key import DescriptorKey, KeyPathKind, DescriptorKeyError
-from bip380.miniscript import SatisfactionMaterial
+from bip380.miniscript import Node, SatisfactionMaterial, fragments
 from bip380.descriptors.errors import DescriptorParsingError
 from bip380.utils.hashes import sha256
 
@@ -70,7 +70,9 @@ def verify_tx(descriptor, tx, witness_stack, amount):
 
 
 def roundtrip_desc(desc_str):
-    assert str(Descriptor.from_str(desc_str)) == desc_str
+    desc = Descriptor.from_str(desc_str)
+    assert str(desc) == desc_str
+    return desc
 
 
 def test_wsh_sanity_checks():
@@ -432,7 +434,7 @@ def test_descriptor_parsing():
         )
 
 
-def test_taproot_descriptors():
+def test_taproot_key_path():
     def sanity_check_spk(desc_str, spk_hex):
         desc = Descriptor.from_str(desc_str)
         assert desc.script_pubkey.hex() == spk_hex
@@ -468,4 +470,349 @@ def test_taproot_descriptors():
     assert (
         str(desc)
         == "tr([a7bea80d/0]cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115)#26vl7d0e"
+    )
+
+
+def test_taproot_script_path():
+    # Badly-formatted tree expressions
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,)"
+        )
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{)"
+        )
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,})"
+        )
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{})"
+        )
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{,})"
+        )
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{0,})"
+        )
+    with pytest.raises(DescriptorParsingError):
+        Descriptor.from_str(
+            "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{,1})"
+        )
+
+    # Parsing of various format of internal keys when there is also a tree expression
+    desc = roundtrip_desc(
+        "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{0,1})#pxx8z3sd"
+    )
+    assert str(desc.tree.left_child) == str(Node.from_str("0"))
+    roundtrip_desc(
+        "tr(02cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{0,1})#chhcv82t"
+    )
+    roundtrip_desc(
+        "tr([a7bea80d/0]cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{0,1})#kuyl0wph"
+    )
+    roundtrip_desc(
+        "tr([a7bea80d/0]02cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{0,1})#582tu5pl"
+    )
+    roundtrip_desc(
+        "tr(tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/<0;1>/*,{0,1})#ph24rkjw"
+    )
+    roundtrip_desc(
+        "tr([a7bea80d/9875763'/0]tpubDEN9WSToTyy9ZQfaYqSKfmVqmq1VVLNtYfj3Vkqh67et57eJ5sTKZQBkHqSwPUsoSskJeaYnPttHe2VrkCsKA27kUaN9SDc5zhqeLzKa1rr/0'/<0;1>/*,{0,1})#rc52p8hy"
+    )
+
+    # Verify the computation of the merkle root. Checked against Bitcoin Core and rust-miniscript.
+    # Single leaf
+    desc = roundtrip_desc(
+        "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,pk(1af85df7c89b9d7b8d7ed881c508df243895c37c2a4ef1a945374d468944da57))#dx2xu7f8"
+    )
+    assert (
+        desc.output_key().format().hex()
+        == "49d60cd8db4481ba726e89d9925097949a313e009a6cd81549dcad410f5c69c2"
+    )
+    # Depth 1, balanced.
+    desc = roundtrip_desc(
+        "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{pk(30925c62aa5db756f2441f18372a22f99e84f3e1db754e4e8d1cf7ff9227556d),pk(1af85df7c89b9d7b8d7ed881c508df243895c37c2a4ef1a945374d468944da57)})#4cly7ykp"
+    )
+    assert (
+        desc.output_key().format().hex()
+        == "364033633d10c0bb6af6515778b7245d615546197bfae4f9bceeda4cd55c06f9"
+    )
+    # Depth 2, imbalanced.
+    desc = roundtrip_desc(
+        "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{pk(30925c62aa5db756f2441f18372a22f99e84f3e1db754e4e8d1cf7ff9227556d),{pk(1af85df7c89b9d7b8d7ed881c508df243895c37c2a4ef1a945374d468944da57),pk(af7453eeac1fc57201cd7813c722c06e12929d7be23c1c025d3afacf2e0b0cfa)}})#ycrkgmjm"
+    )
+    assert (
+        desc.output_key().format().hex()
+        == "3baf6fbd5fd8f853feb0bc06b43babcc11aa4583aa423f48047f1ada780a0a6b"
+    )
+    # Depth 2, imbalanced the other side.
+    desc = roundtrip_desc(
+        "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{{pk(30925c62aa5db756f2441f18372a22f99e84f3e1db754e4e8d1cf7ff9227556d),pk(1af85df7c89b9d7b8d7ed881c508df243895c37c2a4ef1a945374d468944da57)},pk(af7453eeac1fc57201cd7813c722c06e12929d7be23c1c025d3afacf2e0b0cfa)})#xtk7tcz0"
+    )
+    assert (
+        desc.output_key().format().hex()
+        == "50858e1c2167b6860b8b1d602a7926e95f77e4e5741c8cb057f767cba69edc29"
+    )
+    # Depth 2, balanced.
+    desc = roundtrip_desc(
+        "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{{pk(30925c62aa5db756f2441f18372a22f99e84f3e1db754e4e8d1cf7ff9227556d),pk(1af85df7c89b9d7b8d7ed881c508df243895c37c2a4ef1a945374d468944da57)},{pk(af7453eeac1fc57201cd7813c722c06e12929d7be23c1c025d3afacf2e0b0cfa),pk(6cb7bbba9f9f455ddb3e5bd9ac2156dda063706105fe55c5eb0a8457fed32915)}})#e59qvuzs"
+    )
+    assert (
+        desc.output_key().format().hex()
+        == "00ca439c5b5eadfdb4c85353a5b76850d28c9ce410cf59f8b04afbc77a2ede6b"
+    )
+
+    # Can't use a multi() under Taproot.
+    with pytest.raises(DescriptorParsingError, match="only available for P2WSH"):
+        desc = Descriptor.from_str(
+            f"tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,multi(2,0227cb9432f93edc3ba82ca70c75bda335553a999e6ab885bc337fcb837aa18f4a,02ed00f0a17f220c7b2179ab9610ea2cccaf290c0f726ce472ab959b2528d2b9de))"
+        )
+
+    # A multi_a made verify, and back Wdu, for the purpose of exercising various
+    # fragments.
+    multi_frag = fragments.MultiA(
+        2,
+        [
+            DescriptorKey(
+                "cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115"
+            ),
+            DescriptorKey(
+                "a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd"
+            ),
+        ],
+    )
+    convoluted_multi_a = fragments.WrapA(
+        fragments.AndB(
+            fragments.WrapU(fragments.WrapT(fragments.WrapV(multi_frag))),
+            fragments.WrapA(fragments.WrapL(fragments.Just1())),
+        ),
+    )
+    pk_frag = fragments.WrapC(
+        fragments.Pk(
+            DescriptorKey(
+                "02cc24adfed5a481b000192042b2399087437d8eb16095c3dda1d45a4fbf868017"
+            ),
+            is_taproot=True,
+        )
+    )
+    pkh_frag = fragments.WrapC(
+        fragments.Pkh(
+            DescriptorKey(
+                "033d65a099daf8d973422e75f78c29504e5e53bfb81f3b08d9bb161cdfb3c3ee9a"
+            ),
+            is_taproot=True,
+        )
+    )
+    thresh_frag = fragments.Thresh(
+        1, [pkh_frag, fragments.WrapS(pk_frag), convoluted_multi_a]
+    )
+
+    # Single-script tree expressions
+    desc = roundtrip_desc(
+        "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,0)#jfxxeqdf"
+    )
+    assert str(desc.tree) == str(Node.from_str("0"))
+    desc = roundtrip_desc(
+        "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,1)#ggpdnrdk"
+    )
+    assert str(desc.tree) == str(Node.from_str("1"))
+
+    # Deep tree (NOTE: it's ok to repeat keys across leaves)
+    desc = roundtrip_desc(
+        "tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,\
+                {\
+                    {\
+                        {\
+                            pk(6e5628506ecd33242e5ceb5fdafe4d3066b5c0f159b3c05a621ef65f177ea286),\
+                            pkh(6e5628506ecd33242e5ceb5fdafe4d3066b5c0f159b3c05a621ef65f177ea286)\
+                        },\
+                        {\
+                            pkh(022f4401b9fbf2f8b3d491cfa307eb6d895b2a5632276461450fb4dc0045f22329),\
+                            pk(022f4401b9fbf2f8b3d491cfa307eb6d895b2a5632276461450fb4dc0045f22329)\
+                        }\
+                    },\
+                    {\
+                        {\
+                            pkh(368045d7d65e1d57c47a5c40ff8b8f382c2d3ef0f1eaf199c1ffac15bb381b95),\
+                            pkh(03e1f7ab99d16384daa9ccee2c39ac5de3ff73df288fd8b8752962c8aa975cd8ae)\
+                        },\
+                        {\
+                            pk(026e5628506ecd33242e5ceb5fdafe4d3066b5c0f159b3c05a621ef65f177ea286),\
+                            pk(026e5628506ecd33242e5ceb5fdafe4d3066b5c0f159b3c05a621ef65f177ea286)\
+                        }\
+                    }\
+                }\
+            )#0zdzegs3".replace(
+            " ", ""
+        )
+    )
+
+    # Imbalanced trees
+    desc = roundtrip_desc(
+        f"tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{{{{{pk_frag},{pkh_frag}}},{convoluted_multi_a}}})#a7dcefu7"
+    )
+    assert str(desc.tree.left_child.left_child) == str(pk_frag)
+    assert str(desc.tree.left_child.right_child) == str(pkh_frag)
+    assert str(desc.tree.right_child) == str(convoluted_multi_a)
+    desc = roundtrip_desc(
+        f"tr(cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115,{{{pk_frag},{{{pkh_frag},{convoluted_multi_a}}}}})#67yr0cff"
+    )
+    assert str(desc.tree.left_child) == str(pk_frag)
+    assert str(desc.tree.right_child.left_child) == str(pkh_frag)
+    assert str(desc.tree.right_child.right_child) == str(convoluted_multi_a)
+
+
+def test_taproot_satisfaction():
+    """Cross check the satisfaction against"""
+
+    desc = Descriptor.from_str(
+        "tr(e6b631547001c2ca7c6cfb0637df5dcf23540567b7130b42a5560b9fa9f02922,{{{pk(6f3083e8d6e468fc5db3ec3301a259d73110b22310e0640c3b106fda8a5773cc),pkh(4228e97dbded4aab222af59b862cd36bc6756f21f55eadbbee8fb2a6c41a4561)},{pk(f2c463aeda45b31314a5fa8a98970647df2517f2b9786255d5c66dd3520e6b30),pk(fff4b58834e5ff31b2d9c30ec18b9e92de9c299484ce2a4e7ac6d8e3c0062571)}},{{pk(45455d3f915ac438c9405467bcf0fcf59d9cf4b25069fb7cef1ace3451c69e78),pk(541522cc80f357d28aa9d3883aacaa312310f915a3237ba52b8107ea33a6bbc6)},{pkh(b0e7f16f04d8fab675658197058f116eca2c3c1b162b8aafb90e066615c51f99),pkh(3ae686f1a11c6d54e99f450e52148a9c38209e9010165c125b0558490e0d766a)}}})#qhxcthy5"
+    )
+    assert (
+        desc.tree.merkle_root().hex()
+        == "f24b40c4a4790c55b26d306e64178047d3fb8322e8d0aefe0823be80b9c0a86b"
+    )
+    dummy_sig = bytes(64)
+    desc_keys = set(k.bytes().hex() for k in desc.keys)
+
+    # First test the key path
+    material = SatisfactionMaterial(signatures={desc.output_key().format(): dummy_sig})
+    assert [e.hex() for e in desc.satisfy(material)] == [
+        dummy_sig.hex(),
+    ]
+
+    # Then the script path for all the keys
+    key_cb = [
+        (
+            "45455d3f915ac438c9405467bcf0fcf59d9cf4b25069fb7cef1ace3451c69e78",
+            "c1e6b631547001c2ca7c6cfb0637df5dcf23540567b7130b42a5560b9fa9f02922482065cba2919aa9ca1c62f3943b3a091d82d154a89e15bcddc23f78ad9e62cd2a86719442ce543b69b84c6ccdb58eaab3f0a8803e1d48865a20067dac61d1d4795c638fed8e10481e4874ed3c676a8a51a42875bc1ba435c08fc92ab5027c56",
+        ),
+        (
+            "541522cc80f357d28aa9d3883aacaa312310f915a3237ba52b8107ea33a6bbc6",
+            "c1e6b631547001c2ca7c6cfb0637df5dcf23540567b7130b42a5560b9fa9f0292243974653ab9357fb76569ac62e8e4bef31a0be7678dbec93585591850a95d9b92a86719442ce543b69b84c6ccdb58eaab3f0a8803e1d48865a20067dac61d1d4795c638fed8e10481e4874ed3c676a8a51a42875bc1ba435c08fc92ab5027c56",
+        ),
+        (
+            "6f3083e8d6e468fc5db3ec3301a259d73110b22310e0640c3b106fda8a5773cc",
+            "c1e6b631547001c2ca7c6cfb0637df5dcf23540567b7130b42a5560b9fa9f02922da83bb9bdf7a5a3b0d45a5f811d90fb88495cc4c984ab1b60618a4012833e42782bbc5be7826c9493cfd897c3deea90f0a380b7610657bcdc66b3e0662048fe8a90d03ef4486e773622d8779920cc966db3b0ccbe439c2b86b5f7bb69c9d4ef8",
+        ),
+        (
+            "f2c463aeda45b31314a5fa8a98970647df2517f2b9786255d5c66dd3520e6b30",
+            "c1e6b631547001c2ca7c6cfb0637df5dcf23540567b7130b42a5560b9fa9f029223513f769ff3e4ec0279cc10f43f1146b5d6bfed72291133ef69ef7357cff5adcc759e7319868d906769d5c29080f5bb195bc75c3f9a22436b6b1f903cb75ebc1a90d03ef4486e773622d8779920cc966db3b0ccbe439c2b86b5f7bb69c9d4ef8",
+        ),
+        (
+            "fff4b58834e5ff31b2d9c30ec18b9e92de9c299484ce2a4e7ac6d8e3c0062571",
+            "c1e6b631547001c2ca7c6cfb0637df5dcf23540567b7130b42a5560b9fa9f029220e456c80b89ca89d82b09b15464d4f9d157330ea8494193b623b9ce147939c8cc759e7319868d906769d5c29080f5bb195bc75c3f9a22436b6b1f903cb75ebc1a90d03ef4486e773622d8779920cc966db3b0ccbe439c2b86b5f7bb69c9d4ef8",
+        ),
+    ]
+    for key, control_block in key_cb:
+        assert key in desc_keys
+        material = SatisfactionMaterial(signatures={bytes.fromhex(key): dummy_sig})
+        assert [e.hex() for e in desc.satisfy(material)] == [
+            dummy_sig.hex(),
+            "20" + key + "ac",  # PUSHDATA for 64 bytes, the key, then OP_CHECKSIG
+            control_block,
+        ]
+
+    # Then the script path for all the key hashes
+    key_h_cb = [
+        (
+            "4228e97dbded4aab222af59b862cd36bc6756f21f55eadbbee8fb2a6c41a4561",
+            "74e908762a50669f5f170ecac952023ce4a68a43",
+            "c1e6b631547001c2ca7c6cfb0637df5dcf23540567b7130b42a5560b9fa9f02922ee0d7007dce3440c2a083167d8ef0536c3c622699f058f6720e9666fa85430dd82bbc5be7826c9493cfd897c3deea90f0a380b7610657bcdc66b3e0662048fe8a90d03ef4486e773622d8779920cc966db3b0ccbe439c2b86b5f7bb69c9d4ef8",
+        ),
+        (
+            "b0e7f16f04d8fab675658197058f116eca2c3c1b162b8aafb90e066615c51f99",
+            "9e6533b1086900a89b734d939d325781e463e086",
+            "c1e6b631547001c2ca7c6cfb0637df5dcf23540567b7130b42a5560b9fa9f0292254ae6600770c341bbacfb8190fae055e91bb4c131651282265755fe7e85f5bba2bfedf828a6e2335ea2e2ef2874fe7509086ad19418103ad2e3fb664376cb483795c638fed8e10481e4874ed3c676a8a51a42875bc1ba435c08fc92ab5027c56",
+        ),
+        (
+            "3ae686f1a11c6d54e99f450e52148a9c38209e9010165c125b0558490e0d766a",
+            "8ee89b2f14917b680653e09272164887e6f43fe2",
+            "c1e6b631547001c2ca7c6cfb0637df5dcf23540567b7130b42a5560b9fa9f02922017fb95999131b293ac837fe77ec3b17eb9d57e9c901e40f13d77adbd90bfe422bfedf828a6e2335ea2e2ef2874fe7509086ad19418103ad2e3fb664376cb483795c638fed8e10481e4874ed3c676a8a51a42875bc1ba435c08fc92ab5027c56",
+        ),
+    ]
+    for key, h, control_block in key_h_cb:
+        assert key in desc_keys
+        material = SatisfactionMaterial(signatures={bytes.fromhex(key): dummy_sig})
+        assert [e.hex() for e in desc.satisfy(material)] == [
+            dummy_sig.hex(),
+            key,  # Key push for the hash preimage
+            "76a914"
+            + h
+            + "88ac",  # DUP HASH160 PUSHDATA for 20 bytes, the hash, EQUALVERIFY, CHECKSIG
+            control_block,
+        ]
+
+    # If there is a signature for any script path but also for the key path, the satisfier
+    # will chose the key path.
+    material = SatisfactionMaterial(
+        signatures={
+            desc.output_key().format(): dummy_sig,
+            bytes.fromhex(
+                "45455d3f915ac438c9405467bcf0fcf59d9cf4b25069fb7cef1ace3451c69e78"
+            ): dummy_sig,
+        }
+    )
+    assert [e.hex() for e in desc.satisfy(material)] == [
+        dummy_sig.hex(),
+    ]
+
+    # If there is a signature for any script path but also for the key path, the satisfier
+    # will chose the key path.
+    material = SatisfactionMaterial(
+        signatures={
+            desc.output_key().format(): dummy_sig,
+            bytes.fromhex(
+                "45455d3f915ac438c9405467bcf0fcf59d9cf4b25069fb7cef1ace3451c69e78"
+            ): dummy_sig,
+        }
+    )
+    assert [e.hex() for e in desc.satisfy(material)] == [
+        dummy_sig.hex(),
+    ]
+
+    # Between two leaves at the same depth the satisfier will chose the less expensive leaf
+    # to satisfy.
+    material = SatisfactionMaterial(
+        signatures={
+            # For pkh()
+            bytes.fromhex(
+                "4228e97dbded4aab222af59b862cd36bc6756f21f55eadbbee8fb2a6c41a4561"
+            ): dummy_sig,
+            # For pk()
+            bytes.fromhex(
+                "45455d3f915ac438c9405467bcf0fcf59d9cf4b25069fb7cef1ace3451c69e78"
+            ): dummy_sig,
+        }
+    )
+    sat = desc.satisfy(material)
+    assert sat[0] == dummy_sig and sat[1] == bytes.fromhex(
+        "2045455d3f915ac438c9405467bcf0fcf59d9cf4b25069fb7cef1ace3451c69e78ac"
+    )
+
+    # Between two satisfactions of the same size but at different depths the satifier will
+    # choose the less deep one as it makes the merkle proof shorter.
+    desc = Descriptor.from_str(
+        "tr(e6b631547001c2ca7c6cfb0637df5dcf23540567b7130b42a5560b9fa9f02922,{{pk(6f3083e8d6e468fc5db3ec3301a259d73110b22310e0640c3b106fda8a5773cc),{pk(f2c463aeda45b31314a5fa8a98970647df2517f2b9786255d5c66dd3520e6b30),pk(fff4b58834e5ff31b2d9c30ec18b9e92de9c299484ce2a4e7ac6d8e3c0062571)}},{{pk(45455d3f915ac438c9405467bcf0fcf59d9cf4b25069fb7cef1ace3451c69e78),pk(541522cc80f357d28aa9d3883aacaa312310f915a3237ba52b8107ea33a6bbc6)},{pkh(b0e7f16f04d8fab675658197058f116eca2c3c1b162b8aafb90e066615c51f99),pkh(3ae686f1a11c6d54e99f450e52148a9c38209e9010165c125b0558490e0d766a)}}})"
+    )
+    material = SatisfactionMaterial(
+        signatures={
+            # pk() at depth 2
+            bytes.fromhex(
+                "6f3083e8d6e468fc5db3ec3301a259d73110b22310e0640c3b106fda8a5773cc"
+            ): dummy_sig,
+            # pk() at depth 3
+            bytes.fromhex(
+                "f2c463aeda45b31314a5fa8a98970647df2517f2b9786255d5c66dd3520e6b30"
+            ): dummy_sig,
+        }
+    )
+    sat = desc.satisfy(material)
+    assert sat[0] == dummy_sig and sat[1] == bytes.fromhex(
+        "206f3083e8d6e468fc5db3ec3301a259d73110b22310e0640c3b106fda8a5773ccac"
     )
