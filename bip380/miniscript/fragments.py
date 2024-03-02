@@ -5,7 +5,6 @@ Each element correspond to a Bitcoin Script fragment, and has various type prope
 See the Miniscript website for the specification of the type system: https://bitcoin.sipa.be/miniscript/.
 """
 
-import copy
 import bip380.miniscript.parsing as parsing
 
 from bip380.key import DescriptorKey
@@ -47,7 +46,7 @@ from bip380.utils.script import (
 
 from .errors import MiniscriptNodeCreationError
 from .property import Property
-from .satisfaction import ExecutionInfo, Satisfaction
+from .satisfaction import ExecutionInfo, Satisfaction, ThreshSubsInfo
 
 
 # Threshold for nLockTime: below this value it is interpreted as block number,
@@ -90,7 +89,8 @@ class Node:
     # Whether this node does not contain a mix of timelock or heightlock of different types.
     # That is, not (abs_heightlocks and rel_heightlocks or abs_timelocks and abs_timelocks)
     no_timelock_mix = None
-    # Information about this Miniscript execution (satisfaction cost, etc..)
+    # Information about this Miniscript execution (satisfaction cost, etc..). Note that the
+    # execution information assumes non-malleable satisfaction.
     exec_info = None
 
     def __init__(self, *args, **kwargs):
@@ -575,7 +575,7 @@ class AndV(Node):
         return Satisfaction.from_concat(sat_material, *self.subs)
 
     def dissatisfaction(self):
-        return Satisfaction.unavailable()  # it's V.
+        return (self.subs[1].dissatisfy() + self.subs[0].satisfy()).set_non_canon()
 
     def __repr__(self):
         return f"and_v({','.join(map(str, self.subs))})"
@@ -628,7 +628,15 @@ class AndB(Node):
         return Satisfaction.from_concat(sat_material, self.subs[0], self.subs[1])
 
     def dissatisfaction(self):
-        return self.subs[1].dissatisfaction() + self.subs[0].dissatisfaction()
+        return (
+            (self.subs[1].dissatisfaction() + self.subs[0].dissatisfaction())
+            | (
+                self.subs[1].dissatisfaction() + self.subs[0].satisfaction()
+            ).set_non_canon()
+            | (
+                self.subs[1].satisfaction() + self.subs[0].dissatisfaction()
+            ).set_non_canon()
+        )
 
     def __repr__(self):
         return f"and_b({','.join(map(str, self.subs))})"
@@ -918,8 +926,10 @@ class AndOr(Node):
         ) | (self.subs[2].satisfaction(sat_material) + self.subs[0].dissatisfaction())
 
     def dissatisfaction(self):
-        # Dissatisfy X and Z
-        return self.subs[2].dissatisfaction() + self.subs[0].dissatisfaction()
+        # Dissatisfy X and Z [or satisfy X but dissatisfy Y]
+        return (self.subs[2].dissatisfaction() + self.subs[0].dissatisfaction()) | (
+            self.subs[1].dissatisfaction() + self.subs[0].satisfaction()
+        ).set_non_canon()
 
     def __repr__(self):
         return f"andor({','.join(map(str, self.subs))})"
@@ -1009,9 +1019,10 @@ class Thresh(Node):
         return Satisfaction.from_thresh(sat_material, self.k, self.subs)
 
     def dissatisfaction(self):
-        return sum(
+        all_dissat = sum(
             [sub.dissatisfaction() for sub in self.subs], start=Satisfaction(witness=[])
         )
+        
 
     def __repr__(self):
         return f"thresh({self.k},{','.join(map(str, self.subs))})"
@@ -1236,7 +1247,12 @@ class WrapJ(WrapperNode):
         return ExecutionInfo.from_wrap_dissat(self.sub.exec_info, ops_count=4, dissat=1)
 
     def dissatisfaction(self):
-        return Satisfaction(witness=[b""])
+        sub_dissat = self.sub.dissatisfy()
+        return Satisfaction(witness=[b""]) | (
+            sub_dissat.non_canon()
+            if not sub_dissat.is_unavailable() and len(sub_dissat.witness[-1]) > 0
+            else Satisfaction.unavailable()
+        )
 
     def __repr__(self):
         # Avoid duplicating colons
